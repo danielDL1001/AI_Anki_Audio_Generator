@@ -3,18 +3,19 @@ import os
 import asyncio
 
 # Configurações
-VOICE = "ja-JP-NanamiNeural" #Or choice: VOICE = "ja-JP-AoiNeural"
+VOICE = "pt-BR-FranciscaNeural" #Or: VOICE = "ja-JP-AoiNeural",ja-JP-NanamiNeural"
 HOME = os.path.expanduser("~")
 PASTA = os.path.join(
     HOME,
     "Downloads",
     "AudioAnki"
 )
-
-# Cria a pasta se não existir
+# Criar a pasta se não existir
 os.makedirs(PASTA, exist_ok=True)
 
+# Funções
 async def gerar_audio(texto, arquivo):
+
     comando = (
         f'edge-tts --voice "{VOICE}" '
         f'--text "{texto}" '
@@ -24,6 +25,7 @@ async def gerar_audio(texto, arquivo):
     os.system(comando)
 
 def invoke(action, **params):
+
     return requests.post(
         "http://localhost:8765",
         json={
@@ -33,10 +35,9 @@ def invoke(action, **params):
         }
     ).json()
 
-# pega cards
 notes = invoke(
     "findNotes",
-    query="" # Aqui você pode colocar um filtro para pegar apenas os cards que deseja, por exemplo: query="tag:audio"
+    query=""
 )["result"]
 
 infos = invoke(
