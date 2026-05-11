@@ -2,18 +2,26 @@ import requests
 import os
 import asyncio
 
-# Configurações
-VOICE = "pt-BR-FranciscaNeural" #Or: VOICE = "ja-JP-AoiNeural",ja-JP-NanamiNeural"
+# =========================
+# CONFIGURAÇÕES
+# =========================
+
+VOICE = "pt-BR-FranciscaNeural"
+
 HOME = os.path.expanduser("~")
+
+# Pasta oficial de mídia do Anki
 PASTA = os.path.join(
     HOME,
-    "Downloads",
-    "AudioAnki"
+    ".local/share/Anki2/User 1/collection.media"
 )
-# Criar a pasta se não existir
+
 os.makedirs(PASTA, exist_ok=True)
 
-# Funções
+# =========================
+# GERAR ÁUDIO
+# =========================
+
 async def gerar_audio(texto, arquivo):
 
     comando = (
@@ -23,6 +31,10 @@ async def gerar_audio(texto, arquivo):
     )
 
     os.system(comando)
+
+# =========================
+# ANKICONNECT
+# =========================
 
 def invoke(action, **params):
 
@@ -35,9 +47,13 @@ def invoke(action, **params):
         }
     ).json()
 
+# =========================
+# PEGAR APENAS TAG AUDIO
+# =========================
+
 notes = invoke(
     "findNotes",
-    query=""
+    query="tag:audio"
 )["result"]
 
 infos = invoke(
@@ -45,11 +61,21 @@ infos = invoke(
     notes=notes
 )["result"]
 
+# =========================
+# LOOP
+# =========================
+
 for note in infos:
 
     note_id = note["noteId"]
 
-    texto = note["fields"]["Frente"]["value"]
+    # PEGA TEXTO DO VERSO
+    texto = note["fields"]["Verso"]["value"]
+
+    # REMOVE HTML
+    texto = texto.replace("<br>", " ")
+    texto = texto.replace("<div>", " ")
+    texto = texto.replace("</div>", " ")
 
     nome_audio = f"{note_id}.mp3"
 
@@ -58,6 +84,12 @@ for note in infos:
         nome_audio
     )
 
+    # VERIFICA SE O ÁUDIO EXISTE
+    if os.path.exists(caminho_audio):
+        print(f"Já existe -> {texto}")
+        continue
+
+    # GERA ÁUDIO
     asyncio.run(
         gerar_audio(
             texto,
@@ -67,6 +99,7 @@ for note in infos:
 
     audio_tag = f"[sound:{nome_audio}]"
 
+    # ESCREVE NO CAMPO AUDIO
     invoke(
         "updateNoteFields",
         note={
