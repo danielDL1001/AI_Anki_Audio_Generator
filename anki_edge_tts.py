@@ -14,12 +14,12 @@ VOICE = "pt-BR-FranciscaNeural"
 
 HOME = os.path.expanduser("~")
 
-PASTA = os.path.join(
+TEMP_DIR = os.path.join(
     HOME,
-    ".local/share/Anki2/User 1/collection.media"
+    "anki_tts_temp"
 )
+os.makedirs(TEMP_DIR, exist_ok=True)
 
-os.makedirs(PASTA, exist_ok=True)
 
 # Quantas tentativas antes de desistir
 MAX_RETRIES = 3
@@ -136,7 +136,7 @@ for i, note in enumerate(infos, start=1):
     nome_audio = f"{note_id}.mp3"
 
     caminho_audio = os.path.join(
-        PASTA,
+        TEMP_DIR,
         nome_audio
     )
 
@@ -216,8 +216,15 @@ for i, note in enumerate(infos, start=1):
                 and os.path.getsize(caminho_audio) > 0
             ):
 
+                invoke(
+                    "storeMediaFile",
+                    filename=nome_audio,
+                    path=caminho_audio
+                )
+
                 sucesso = True
                 break
+                
 
             else:
 
