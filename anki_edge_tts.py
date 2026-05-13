@@ -126,6 +126,93 @@ infos = invoke(
 
 TOTAL = len(infos)
 
+# =========================
+# VALIDAR TAG AUDIO
+# =========================
+
+if TOTAL == 0:
+
+    print("\n" + "=" * 60)
+    print("ERRO: Nenhum card encontrado.")
+    print("=" * 60)
+
+    print("""
+O script procura SOMENTE cards com a tag:
+
+audio
+
+Como resolver:
+
+1. Abra o navegador do Anki
+2. Selecione seus cards
+3. Vá em:
+   Notas -> Adicionar etiquetas
+4. Adicione a tag:
+
+audio
+
+5. Teste pesquisando:
+
+tag:audio
+""")
+
+    exit()
+
+# =========================
+# VALIDAR CAMPOS
+# =========================
+
+campos_obrigatorios = []
+
+if "Frente" in CAMPOS:
+    campos_obrigatorios.append("AudioFrente")
+
+if "Verso" in CAMPOS:
+    campos_obrigatorios.append("AudioVerso")
+
+primeira_note = infos[0]
+
+campos_faltando = []
+
+for campo in campos_obrigatorios:
+
+    if campo not in primeira_note["fields"]:
+        campos_faltando.append(campo)
+
+if campos_faltando:
+
+    print("\n" + "=" * 60)
+    print("ERRO: Campos obrigatórios não encontrados.")
+    print("=" * 60)
+
+    print("\nCampos faltando:")
+
+    for campo in campos_faltando:
+        print(f"- {campo}")
+
+    print("""
+
+Como resolver:
+
+1. Abra qualquer card no Anki
+2. Vá em:
+   Editar -> Cards... -> Fields... -> Add
+
+3. Crie os campos faltando
+
+Exemplo:
+- AudioFrente
+- AudioVerso
+
+4. Depois adicione no template:
+
+{{AudioFrente}}
+{{AudioVerso}}
+
+""")
+
+    exit()
+
 print(f"\nTOTAL DE CARDS: {TOTAL}\n")
 
 # =========================
@@ -168,12 +255,16 @@ for i, note in enumerate(infos, start=1):
         # CAMPO AUDIO
         # -------------------------
 
-        campo_audio = ""
-
-        if "Audio" in note["fields"]:
-            campo_audio = note["fields"]["Audio"]["value"]
-
         audio_tag = f"[sound:{nome_audio}]"
+
+        if campo == "Frente":
+            campo_destino = "AudioFrente"
+
+        elif campo == "Verso":
+            campo_destino = "AudioVerso"
+
+        else:
+            campo_destino = "Audio"
 
         # -------------------------
         # SE JÁ EXISTE
@@ -186,16 +277,19 @@ for i, note in enumerate(infos, start=1):
 
             print(f"Áudio já existe -> {nome_audio}")
 
-            if audio_tag not in campo_audio:
+            campo_existente = ""
 
-                novo_audio = campo_audio + " " + audio_tag
+            if campo_destino in note["fields"]:
+                campo_existente = note["fields"][campo_destino]["value"]
+
+            if audio_tag not in campo_existente:
 
                 invoke(
                     "updateNoteFields",
                     note={
                         "id": note_id,
                         "fields": {
-                            "Audio": novo_audio.strip()
+                            campo_destino: audio_tag
                         }
                     }
                 )
@@ -253,14 +347,12 @@ for i, note in enumerate(infos, start=1):
         # UPDATE AUDIO
         # -------------------------
 
-        novo_audio = campo_audio + " " + audio_tag
-
         invoke(
             "updateNoteFields",
             note={
                 "id": note_id,
                 "fields": {
-                    "Audio": novo_audio.strip()
+                    campo_destino: audio_tag
                 }
             }
         )
