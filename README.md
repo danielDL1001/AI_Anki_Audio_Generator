@@ -134,17 +134,27 @@ Se os cards aparecerem, está funcionando corretamente.
 
 ---
 
-# 🧠 Criar o campo Audio
+# 🧠 Criar os campos de áudio
 
-Seu modelo de card precisa ter um campo chamado:
+Seu modelo de card precisa ter os campos:
 
 ```text
-Audio
+AudioFrente
+AudioVerso
 ```
+
+Esses campos são usados para separar os áudios da frente e do verso do card.
+
+Isso evita:
+
+- áudio tocando fora de ordem
+- dois áudios tocando juntos
+- áudio da frente tocando no verso
+- problemas de autoplay no Anki
 
 ---
 
-# ➕ Como adicionar o campo Audio
+# ➕ Como adicionar os campos
 
 Abra qualquer card.
 
@@ -154,10 +164,18 @@ Depois vá em:
 Editar → Cards... → Fields... → Add
 ```
 
-Digite:
+Crie os dois campos:
+
+## Campo 1
 
 ```text
-Audio
+AudioFrente
+```
+
+## Campo 2
+
+```text
+AudioVerso
 ```
 
 Clique em:
@@ -168,19 +186,25 @@ OK
 
 ---
 
-# 🎴 Mostrar o áudio no card
+# 🎴 Mostrar os áudios no card
 
 O áudio NÃO irá tocar automaticamente se o template do card não possuir:
 
 ```html
-{{Audio}}
+{{AudioFrente}}
+```
+
+e
+
+```html
+{{AudioVerso}}
 ```
 
 Você PRECISA adicionar isso no template do cartão.
 
 ---
 
-# ➕ Como adicionar `{{Audio}}`
+# ➕ Como adicionar `{{AudioFrente}}` e `{{AudioVerso}}`
 
 Abra qualquer card.
 
@@ -208,21 +232,19 @@ Você verá algo parecido com:
 {{Verso}}
 ```
 
-Adicione:
+---
 
-```html
-{{Audio}}
-```
-
-Exemplo:
+# ✅ Template recomendado
 
 ## Frente
 
 ```html
 {{Frente}}
 
-{{Audio}}
+{{AudioFrente}}
 ```
+
+---
 
 ## Verso
 
@@ -233,7 +255,7 @@ Exemplo:
 
 {{Verso}}
 
-{{Audio}}
+{{AudioVerso}}
 ```
 
 ---
@@ -242,15 +264,21 @@ Exemplo:
 
 Quando o card abrir no Anki:
 
-- o áudio será exibido
-- o Anki tocará automaticamente
-- o script adicionará:
+- o áudio da frente tocará apenas na frente
+- o áudio do verso tocará apenas no verso
+- o autoplay funcionará corretamente
+- o script adicionará automaticamente:
 
 ```text
 [sound:arquivo.mp3]
 ```
 
-no campo `Audio`
+nos campos corretos:
+
+```text
+AudioFrente
+AudioVerso
+```
 
 # ▶ Executar
 
