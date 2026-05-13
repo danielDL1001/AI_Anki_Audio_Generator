@@ -4,7 +4,6 @@ import os
 import re
 import html
 import subprocess
-from pathlib import Path
 
 # =========================
 # CONFIG
@@ -18,11 +17,34 @@ TEMP_DIR = os.path.join(
     HOME,
     "anki_tts_temp"
 )
+
 os.makedirs(TEMP_DIR, exist_ok=True)
 
-
-# Quantas tentativas antes de desistir
 MAX_RETRIES = 3
+
+# =========================
+# ESCOLHA DO USUÁRIO
+# =========================
+
+print("\nO que deseja gerar?\n")
+print("1 - Frente")
+print("2 - Verso")
+print("3 - Frente e Verso\n")
+
+opcao = input("Escolha: ").strip()
+
+if opcao == "1":
+    CAMPOS = ["Frente"]
+
+elif opcao == "2":
+    CAMPOS = ["Verso"]
+
+elif opcao == "3":
+    CAMPOS = ["Frente", "Verso"]
+
+else:
+    print("Opção inválida.")
+    exit()
 
 # =========================
 # LIMPAR TEXTO
@@ -117,149 +139,132 @@ for i, note in enumerate(infos, start=1):
     print("=" * 60)
     print(f"[{i}/{TOTAL}]")
 
-    # -------------------------
-    # VERIFICA CAMPO
-    # -------------------------
-
-    if "Verso" not in note["fields"]:
-        print("Sem campo 'Verso'")
-        continue
-
-    texto = limpar_texto(
-        note["fields"]["Verso"]["value"]
-    )
-
-    if not texto:
-        print("Texto vazio")
-        continue
-
-    nome_audio = f"{note_id}.mp3"
-
-    caminho_audio = os.path.join(
-        TEMP_DIR,
-        nome_audio
-    )
-
-    # -------------------------
-    # PULA SE JÁ EXISTIR
-    # -------------------------
-
-    campo_audio = ""
-
-    if "Audio" in note["fields"]:
-        campo_audio = note["fields"]["Audio"]["value"]
-
-    audio_tag = f"[sound:{nome_audio}]"
-
-    # -------------------------
-    # SE O ARQUIVO EXISTE
-    # -------------------------
-
-    if (
-        os.path.exists(caminho_audio)
-        and os.path.getsize(caminho_audio) > 0
-    ):
-
-        print(f"Áudio já existe -> {nome_audio}")
+    for campo in CAMPOS:
 
         # -------------------------
-        # CAMPO VAZIO?
+        # VERIFICA CAMPO
         # -------------------------
 
-        if audio_tag not in campo_audio:
+        if campo not in note["fields"]:
+            print(f"Sem campo '{campo}'")
+            continue
 
-            print("Corrigindo campo Audio...")
+        texto = limpar_texto(
+            note["fields"][campo]["value"]
+        )
 
-            invoke(
-                "updateNoteFields",
-                note={
-                    "id": note_id,
-                    "fields": {
-                        "Audio": audio_tag
-                    }
-                }
-            )
+        if not texto:
+            print(f"{campo} vazio")
+            continue
 
-            print("Campo corrigido.")
+        nome_audio = f"{note_id}_{campo}.mp3"
 
-        continue
+        caminho_audio = os.path.join(
+            TEMP_DIR,
+            nome_audio
+        )
 
-    print(f"Gerando áudio...")
-    print(f"Texto: {texto[:80]}")
+        # -------------------------
+        # CAMPO AUDIO
+        # -------------------------
 
-    sucesso = False
+        campo_audio = ""
 
-    # =========================
-    # RETRY
-    # =========================
+        if "Audio" in note["fields"]:
+            campo_audio = note["fields"]["Audio"]["value"]
 
-    for tentativa in range(1, MAX_RETRIES + 1):
+        audio_tag = f"[sound:{nome_audio}]"
 
-        print(f"Tentativa {tentativa}/{MAX_RETRIES}")
+        # -------------------------
+        # SE JÁ EXISTE
+        # -------------------------
 
-        try:
+        if (
+            os.path.exists(caminho_audio)
+            and os.path.getsize(caminho_audio) > 0
+        ):
 
-            retorno, out, err = asyncio.run(
-                gerar_audio(
-                    texto,
-                    caminho_audio
-                )
-            )
+            print(f"Áudio já existe -> {nome_audio}")
 
-            # -------------------------
-            # VERIFICA
-            # -------------------------
+            if audio_tag not in campo_audio:
 
-            if (
-                retorno == 0
-                and os.path.exists(caminho_audio)
-                and os.path.getsize(caminho_audio) > 0
-            ):
+                novo_audio = campo_audio + " " + audio_tag
 
                 invoke(
-                    "storeMediaFile",
-                    filename=nome_audio,
-                    path=caminho_audio
+                    "updateNoteFields",
+                    note={
+                        "id": note_id,
+                        "fields": {
+                            "Audio": novo_audio.strip()
+                        }
+                    }
                 )
 
-                sucesso = True
-                break
-                
+            continue
 
-            else:
+        print(f"\nGerando {campo}...")
+        print(f"Texto: {texto[:80]}")
 
-                print("Falha Edge-TTS")
-                print(err)
+        sucesso = False
 
-        except Exception as e:
+        for tentativa in range(1, MAX_RETRIES + 1):
 
-            print(f"EXCEPTION: {e}")
+            print(f"Tentativa {tentativa}/{MAX_RETRIES}")
 
-    # =========================
-    # FALHOU
-    # =========================
+            try:
 
-    if not sucesso:
+                retorno, out, err = asyncio.run(
+                    gerar_audio(
+                        texto,
+                        caminho_audio
+                    )
+                )
 
-        print("ERRO FINAL")
-        continue
+                if (
+                    retorno == 0
+                    and os.path.exists(caminho_audio)
+                    and os.path.getsize(caminho_audio) > 0
+                ):
 
-    # =========================
-    # UPDATE ANKI
-    # =========================
+                    invoke(
+                        "storeMediaFile",
+                        filename=nome_audio,
+                        path=caminho_audio
+                    )
 
-    audio_tag = f"[sound:{nome_audio}]"
+                    sucesso = True
+                    break
 
-    invoke(
-        "updateNoteFields",
-        note={
-            "id": note_id,
-            "fields": {
-                "Audio": audio_tag
+                else:
+
+                    print("Falha Edge-TTS")
+                    print(err)
+
+            except Exception as e:
+
+                print(f"EXCEPTION: {e}")
+
+        if not sucesso:
+
+            print("ERRO FINAL")
+            continue
+
+        # -------------------------
+        # UPDATE AUDIO
+        # -------------------------
+
+        novo_audio = campo_audio + " " + audio_tag
+
+        invoke(
+            "updateNoteFields",
+            note={
+                "id": note_id,
+                "fields": {
+                    "Audio": novo_audio.strip()
+                }
             }
-        }
-    )
+        )
 
-    print(f"OK -> {nome_audio}")
+        print(f"OK -> {nome_audio}")
 
 print("\nFINALIZADO")
