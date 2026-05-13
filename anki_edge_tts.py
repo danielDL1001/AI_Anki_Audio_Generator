@@ -298,6 +298,20 @@ for i, note in enumerate(infos, start=1):
         if not texto:
             print(f"{campo} vazio")
             continue
+        
+        # =========================
+        # VALIDAR TEXTO FALÁVEL
+        # =========================
+
+        texto_validacao = re.sub(
+            r"[^\w\sÀ-ÿ]",
+            "",
+            texto
+        )
+
+        if not texto_validacao.strip():
+            print(f"{campo} contém apenas símbolos inválidos")
+            continue
 
         nome_audio = f"{note_id}_{campo}.mp3"
 
