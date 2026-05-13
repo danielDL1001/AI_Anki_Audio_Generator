@@ -374,12 +374,155 @@ Exemplo:
 VOICE = "pt-BR-FranciscaNeural"
 ```
 
-Outras vozes:
+O Edge-TTS possui várias vozes naturais em diferentes idiomas.
+
+---
+
+## 🇧🇷 Português (Brasil)
+
+### Vozes femininas
+
+- `pt-BR-FranciscaNeural`
+- `pt-BR-BrendaNeural`
+
+### Vozes masculinas
 
 - `pt-BR-AntonioNeural`
-- `pt-BR-BrendaNeural`
+- `pt-BR-DonatoNeural`
+
+---
+
+## 🇺🇸 Inglês
+
+### Vozes femininas
+
+- `en-US-JennyNeural`
+- `en-US-AriaNeural`
+- `en-US-AnaNeural`
+- `en-GB-SoniaNeural`
+
+### Vozes masculinas
+
+- `en-US-GuyNeural`
+- `en-US-DavisNeural`
+- `en-GB-RyanNeural`
+
+---
+
+## 🇯🇵 Japonês
+
+### Vozes femininas
+
 - `ja-JP-NanamiNeural`
 - `ja-JP-AoiNeural`
+
+### Vozes masculinas
+
+- `ja-JP-KeitaNeural`
+- `ja-JP-DaichiNeural`
+
+---
+
+## 🇪🇸 Espanhol
+
+### Vozes femininas
+
+- `es-ES-ElviraNeural`
+- `es-MX-DaliaNeural`
+
+### Vozes masculinas
+
+- `es-ES-AlvaroNeural`
+- `es-MX-JorgeNeural`
+
+---
+
+# 🔄 Como trocar a voz
+
+Abra o arquivo:
+
+```text
+anki_edge_tts.py
+```
+
+Procure por:
+
+```python
+VOICE = "pt-BR-FranciscaNeural"
+```
+
+E substitua pela voz desejada.
+
+Exemplo:
+
+```python
+VOICE = "ja-JP-NanamiNeural"
+```
+
+ou:
+
+```python
+VOICE = "en-US-JennyNeural"
+```
+
+---
+
+# 🧪 Testar vozes disponíveis
+
+Você também pode listar TODAS as vozes disponíveis do Edge-TTS com:
+
+```bash
+edge-tts --list-voices
+```
+
+Isso mostrará:
+
+- idioma
+- nome da voz
+- país
+- gênero
+
+---
+
+# 💡 Recomendações
+
+## Para cards normais
+
+```text
+pt-BR-FranciscaNeural
+```
+
+Natural e confortável para revisões longas.
+
+---
+
+## Para inglês
+
+```text
+en-US-JennyNeural
+```
+
+Excelente pronúncia e clareza.
+
+---
+
+## Para japonês
+
+```text
+ja-JP-NanamiNeural
+```
+
+Muito usada para estudo de japonês e anime-style listening.
+
+---
+
+## Para espanhol
+
+```text
+es-ES-ElviraNeural
+```
+
+Boa dicção e ritmo equilibrado.
 
 ---
 
