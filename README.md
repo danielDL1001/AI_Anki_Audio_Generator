@@ -170,10 +170,42 @@ OK
 
 # 🎴 Mostrar o áudio no card
 
-Ainda em:
+O áudio NÃO irá tocar automaticamente se o template do card não possuir:
+
+```html
+{{Audio}}
+```
+
+Você PRECISA adicionar isso no template do cartão.
+
+---
+
+# ➕ Como adicionar `{{Audio}}`
+
+Abra qualquer card.
+
+Depois vá em:
 
 ```text
-Cards...
+Editar → Cards...
+```
+
+Você verá algo parecido com:
+
+## Frente
+
+```html
+{{Frente}}
+```
+
+## Verso
+
+```html
+{{FrontSide}}
+
+<hr id=answer>
+
+{{Verso}}
 ```
 
 Adicione:
@@ -182,17 +214,43 @@ Adicione:
 {{Audio}}
 ```
 
-na frente ou no verso do card.
-
 Exemplo:
 
+## Frente
+
 ```html
+{{Frente}}
+
+{{Audio}}
+```
+
+## Verso
+
+```html
+{{FrontSide}}
+
+<hr id=answer>
+
 {{Verso}}
 
 {{Audio}}
 ```
 
 ---
+
+# ✅ Resultado do card
+
+Quando o card abrir no Anki:
+
+- o áudio será exibido
+- o Anki tocará automaticamente
+- o script adicionará:
+
+```text
+[sound:arquivo.mp3]
+```
+
+no campo `Audio`
 
 # ▶ Executar
 
@@ -206,12 +264,68 @@ python3 anki_edge_tts.py
 
 ---
 
-# ✅ Resultado
+# 🎛 Escolher o tipo de áudio
+
+Quando o script iniciar, ele perguntará qual campo deve virar áudio:
+
+```text
+1 - Frente
+2 - Verso
+3 - Frente e Verso
+```
+
+Exemplo:
+
+```text
+O que deseja gerar?
+
+1 - Frente
+2 - Verso
+3 - Frente e Verso
+
+Escolha:
+```
+
+## Opções
+
+### Frente
+Gera áudio apenas do campo:
+
+```text
+Frente
+```
+
+### Verso
+Gera áudio apenas do campo:
+
+```text
+Verso
+```
+
+### Frente e Verso
+Gera áudio para os dois campos.
+
+Exemplo de arquivos:
+
+```text
+123456_Frente.mp3
+123456_Verso.mp3
+```
+
+Os dois áudios serão adicionados automaticamente no campo:
+
+```text
+Audio
+```
+
+---
+
+# ✅ Resultado final
 
 O script irá:
 
 - encontrar cards com tag `audio`
-- ler o campo `Verso`
+- ler o campo `Frente`, `Verso` ou `Frente e Verso`
 - gerar voz automaticamente
 - salvar os áudios no Anki
 - adicionar automaticamente:
