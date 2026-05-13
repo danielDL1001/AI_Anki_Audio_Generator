@@ -216,6 +216,61 @@ Exemplo:
 print(f"\nTOTAL DE CARDS: {TOTAL}\n")
 
 # =========================
+# VERIFICAR ÁUDIOS EXISTENTES
+# =========================
+
+audios_existentes = False
+
+for note in infos:
+
+    for campo in CAMPOS:
+
+        if campo == "Frente":
+            campo_destino = "AudioFrente"
+
+        elif campo == "Verso":
+            campo_destino = "AudioVerso"
+
+        else:
+            continue
+
+        if campo_destino not in note["fields"]:
+            continue
+
+        valor = note["fields"][campo_destino]["value"].strip()
+
+        if valor:
+            audios_existentes = True
+            break
+
+    if audios_existentes:
+        break
+
+# =========================
+# PERGUNTAR REFAZER
+# =========================
+
+REFAZER_AUDIOS = False
+
+if audios_existentes:
+
+    print("=" * 60)
+    print("Áudios existentes detectados!")
+    print("=" * 60)
+
+    print("""
+O que deseja fazer?
+
+1 - Ignorar áudios existentes
+2 - Refazer todos os áudios
+""")
+
+    escolha_refazer = input("Escolha: ").strip()
+
+    if escolha_refazer == "2":
+        REFAZER_AUDIOS = True
+
+# =========================
 # LOOP
 # =========================
 
@@ -275,26 +330,45 @@ for i, note in enumerate(infos, start=1):
             and os.path.getsize(caminho_audio) > 0
         ):
 
-            print(f"Áudio já existe -> {nome_audio}")
+            # -------------------------
+            # IGNORAR ÁUDIO EXISTENTE
+            # -------------------------
 
-            campo_existente = ""
+            if not REFAZER_AUDIOS:
 
-            if campo_destino in note["fields"]:
-                campo_existente = note["fields"][campo_destino]["value"]
+                print(f"Áudio já existe -> {nome_audio}")
 
-            if audio_tag not in campo_existente:
+                campo_existente = ""
 
-                invoke(
-                    "updateNoteFields",
-                    note={
-                        "id": note_id,
-                        "fields": {
-                            campo_destino: audio_tag
+                if campo_destino in note["fields"]:
+                    campo_existente = note["fields"][campo_destino]["value"]
+
+                if audio_tag not in campo_existente:
+
+                    invoke(
+                        "updateNoteFields",
+                        note={
+                            "id": note_id,
+                            "fields": {
+                                campo_destino: audio_tag
+                            }
                         }
-                    }
-                )
+                    )
 
-            continue
+                continue
+
+            # -------------------------
+            # REFAZER ÁUDIO
+            # -------------------------
+
+            else:
+
+                print(f"Refazendo áudio -> {nome_audio}")
+
+                try:
+                    os.remove(caminho_audio)
+                except Exception:
+                    pass
 
         print(f"\nGerando {campo}...")
         print(f"Texto: {texto[:80]}")
