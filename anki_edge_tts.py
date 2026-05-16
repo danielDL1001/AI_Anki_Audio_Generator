@@ -66,8 +66,6 @@ def limpar_texto(texto):
     texto = texto.replace("#", " ")
     texto = texto.replace("•", " ")
 
-    texto = re.sub(r"\s+", " ", texto)
-
     return texto.strip()
 
 # =========================
