@@ -392,7 +392,7 @@ O Edge-TTS possui várias vozes naturais em diferentes idiomas.
 
 ---
 
-## 🇺🇸 Inglês
+## 🇺🇸 English
 
 ### Vozes femininas
 
