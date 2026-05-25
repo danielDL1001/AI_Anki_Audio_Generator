@@ -25,7 +25,7 @@ python -m venv .venv
 
 source .venv/bin/activate
 
-pip install requests edge-tts
+pip install requests edge-tts playsound pygames
 ```
 
 ---
