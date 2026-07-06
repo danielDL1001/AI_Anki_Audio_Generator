@@ -4,6 +4,16 @@ Generate speech audio automatically for your Anki cards using Edge-TTS + AnkiCon
 
 ---
 
+# 🤖 Aviso
+
+Este projeto foi desenvolvido com o auxílio de Inteligência Artificial.
+
+A implementação do código, a estrutura do projeto e parte da documentação foram geradas e refinadas utilizando ferramentas de IA sob orientação do autor.
+
+O repositório é disponibilizado com o objetivo de compartilhar uma solução útil para a comunidade e servir como material de estudo. Todo o código deve ser revisado e testado antes de ser utilizado em ambientes de produção.
+
+A transparência sobre o uso de IA faz parte da filosofia deste projeto.
+
 # 📦 Requisitos
 
 - Python 3.10+
@@ -25,7 +35,7 @@ python -m venv .venv
 
 source .venv/bin/activate
 
-pip install requests edge-tts
+pip install requests edge-tts playsound pygames
 ```
 
 ---
@@ -392,7 +402,7 @@ O Edge-TTS possui várias vozes naturais em diferentes idiomas.
 
 ---
 
-## 🇺🇸 Inglês
+## 🇺🇸 English
 
 ### Vozes femininas
 
