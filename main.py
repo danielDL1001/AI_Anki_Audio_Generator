@@ -5,11 +5,23 @@ import re
 import html
 import subprocess
 
+try:
+    from pydub import AudioSegment
+except ImportError:
+    print("\nERRO: a biblioteca 'pydub' não está instalada.")
+    print("Instale com: pip install pydub")
+    print("(também é necessário ter o 'ffmpeg' instalado no sistema)\n")
+    exit()
+
 # =========================
 # CONFIG
 # =========================
 
 VOICE = "pt-BR-FranciscaNeural"
+
+# Duração da pausa (silêncio) que substitui o {{c1::...}} no áudio da
+# pergunta, em milissegundos. 1000 = 1 segundo.
+CLOZE_PAUSA_MS = 20
 
 HOME = os.path.expanduser("~")
 
@@ -23,24 +35,110 @@ os.makedirs(TEMP_DIR, exist_ok=True)
 MAX_RETRIES = 3
 
 # =========================
+# TIPOS DE NOTA SUPORTADOS
+# =========================
+#
+# "tipo": "normal" -> lê o campo diretamente (Basic_audio)
+# "tipo": "cloze"  -> lê o campo com cloze, tratando {{c1::...}} de forma especial
+#
+# pergunta_campo / resposta_campo = campos de ORIGEM (onde está o texto)
+# pergunta_destino / resposta_destino = campos de DESTINO (onde o áudio é salvo)
+#
+# Para Cloze_audio, o campo de origem do cloze é sempre "Texto" (é onde
+# ficam os marcadores {{cN::...}}). O campo "Extra" é texto livre adicional
+# que é somado ao áudio de resposta.
+
+NOTE_TYPES = {
+    "Basic_audio": {
+        "tipo": "normal",
+        "pergunta_campo": "Frente",
+        "resposta_campo": "Verso",
+        "pergunta_destino": "AudioFrente",
+        "resposta_destino": "AudioVerso",
+    },
+    "Cloze_audio": {
+        "tipo": "cloze",
+        "pergunta_campo": "Texto",
+        "resposta_campo": "Extra",
+        "pergunta_destino": "AudioTexto",
+        "resposta_destino": "AudioExtra",
+    },
+}
+
+# Regex para capturar {{c1::conteudo}} ou {{c1::conteudo::dica}}
+CLOZE_REGEX = re.compile(r"\{\{c\d+::(.*?)\}\}", re.DOTALL)
+
+
+def extrair_respostas_cloze(texto):
+    """Retorna a lista de conteúdos escondidos em {{cN::conteudo}},
+    ignorando a parte de dica (depois do segundo '::')."""
+
+    respostas = []
+
+    for bruto in CLOZE_REGEX.findall(texto):
+        conteudo = bruto.split("::")[0].strip()
+
+        if conteudo:
+            respostas.append(conteudo)
+
+    return respostas
+
+
+def remover_cloze(texto):
+    """Remove completamente {{cN::conteudo::dica}} do texto, incluindo o
+    conteúdo (usado no áudio da pergunta, que não pode revelar a resposta)."""
+
+    return CLOZE_REGEX.sub(" ", texto)
+
+
+def dividir_em_segmentos_cloze(texto):
+    """Divide o texto da pergunta em segmentos de fala, marcando com
+    ("pausa", None) os pontos onde havia um {{cN::conteudo}}.
+
+    Isso permite que, no áudio final, o trecho escondido vire 1 segundo
+    de silêncio real, em vez de ser simplesmente pulado/ignorado."""
+
+    segmentos = []
+    ultimo_fim = 0
+
+    for match in CLOZE_REGEX.finditer(texto):
+
+        trecho = texto[ultimo_fim:match.start()]
+
+        if trecho.strip():
+            segmentos.append(("texto", trecho))
+
+        segmentos.append(("pausa", None))
+
+        ultimo_fim = match.end()
+
+    resto = texto[ultimo_fim:]
+
+    if resto.strip():
+        segmentos.append(("texto", resto))
+
+    return segmentos
+
+
+# =========================
 # ESCOLHA DO USUÁRIO
 # =========================
 
 print("\nO que deseja gerar?\n")
-print("1 - Frente")
-print("2 - Verso")
-print("3 - Frente e Verso\n")
+print("1 - Pergunta")
+print("2 - Resposta")
+print("3 - Pergunta e Resposta\n")
 
 opcao = input("Escolha: ").strip()
 
 if opcao == "1":
-    CAMPOS = ["Frente"]
+    PAPEIS = ["pergunta"]
 
 elif opcao == "2":
-    CAMPOS = ["Verso"]
+    PAPEIS = ["resposta"]
 
 elif opcao == "3":
-    CAMPOS = ["Frente", "Verso"]
+    PAPEIS = ["pergunta", "resposta"]
 
 else:
     print("Opção inválida.")
@@ -49,15 +147,16 @@ else:
 # =========================
 # LIMPAR TEXTO
 # =========================
+# def trocar_x_por_vezes(texto):
+#     return re.sub(r"(?<=[\d])[\s\xa0]*[x×X][\s\xa0]*(?=[\d])", " vezes ", texto)
 
 def limpar_texto(texto):
 
     texto = re.sub(r"<[^>]+>", " ", texto)
     texto = re.sub(r"\[sound:[^\]]+\]", " ", texto)
     texto = re.sub(r"http\S+", " ", texto)
-
     texto = html.unescape(texto)
-
+    # texto = trocar_x_por_vezes(texto)
     texto = texto.replace("\u200b", " ")
     texto = texto.replace("\ufeff", " ")
 
@@ -91,6 +190,78 @@ async def gerar_audio(texto, arquivo):
         stderr.decode()
     )
 
+
+async def gerar_audio_segmentado(segmentos, arquivo_final):
+    """
+    Gera o áudio final a partir de uma lista de segmentos no formato:
+
+        [("texto", "algum texto"), ("pausa", None), ("texto", "outro texto")]
+
+    - Cada segmento ("texto", ...) é sintetizado normalmente via Edge-TTS.
+    - Cada segmento ("pausa", None) vira 1 segundo de silêncio REAL no
+      áudio final (em vez de simplesmente não existir).
+
+    Retorna (sucesso: bool, mensagem_erro: str | None).
+    """
+
+    SILENCIO = AudioSegment.silent(duration=CLOZE_PAUSA_MS)
+
+    audio_final = AudioSegment.silent(duration=0)
+    algum_audio_gerado = False
+    ultimo_erro = ""
+
+    for indice, (tipo, conteudo) in enumerate(segmentos):
+
+        if tipo == "pausa":
+            audio_final += SILENCIO
+            continue
+
+        texto_segmento = (conteudo or "").strip()
+
+        if not texto_segmento:
+            continue
+
+        caminho_temp = f"{arquivo_final}.part{indice}.mp3"
+
+        sucesso_segmento = False
+
+        for tentativa in range(1, MAX_RETRIES + 1):
+
+            try:
+                retorno, out, err = await gerar_audio(texto_segmento, caminho_temp)
+
+                if (
+                    retorno == 0
+                    and os.path.exists(caminho_temp)
+                    and os.path.getsize(caminho_temp) > 0
+                ):
+                    sucesso_segmento = True
+                    break
+
+                ultimo_erro = err
+
+            except Exception as e:
+                ultimo_erro = str(e)
+
+        if not sucesso_segmento:
+            return False, f"Falha ao gerar segmento de áudio: {ultimo_erro}"
+
+        try:
+            audio_final += AudioSegment.from_file(caminho_temp, format="mp3")
+            algum_audio_gerado = True
+        finally:
+            try:
+                os.remove(caminho_temp)
+            except Exception:
+                pass
+
+    if not algum_audio_gerado:
+        return False, "Nenhum segmento de áudio foi gerado"
+
+    audio_final.export(arquivo_final, format="mp3")
+
+    return True, None
+
 # =========================
 # ANKICONNECT
 # =========================
@@ -122,13 +293,7 @@ infos = invoke(
     notes=notes
 )["result"]
 
-TOTAL = len(infos)
-
-# =========================
-# VALIDAR TAG AUDIO
-# =========================
-
-if TOTAL == 0:
+if len(infos) == 0:
 
     print("\n" + "=" * 60)
     print("ERRO: Nenhum card encontrado.")
@@ -157,61 +322,63 @@ tag:audio
     exit()
 
 # =========================
-# VALIDAR CAMPOS
+# AGRUPAR POR TIPO DE NOTA E VALIDAR
 # =========================
 
-campos_obrigatorios = []
+notas_por_modelo = {}
 
-if "Frente" in CAMPOS:
-    campos_obrigatorios.append("AudioFrente")
+for note in infos:
+    notas_por_modelo.setdefault(note["modelName"], []).append(note)
 
-if "Verso" in CAMPOS:
-    campos_obrigatorios.append("AudioVerso")
+infos_processaveis = []
 
-primeira_note = infos[0]
+for model_name, notas in notas_por_modelo.items():
 
-campos_faltando = []
+    if model_name not in NOTE_TYPES:
+        print(f"Aviso: tipo de nota '{model_name}' não suportado. "
+              f"Ignorando {len(notas)} nota(s) desse tipo.")
+        continue
 
-for campo in campos_obrigatorios:
+    config = NOTE_TYPES[model_name]
 
-    if campo not in primeira_note["fields"]:
-        campos_faltando.append(campo)
+    # Campos de ORIGEM necessários para os papéis escolhidos
+    campos_origem_necessarios = set()
 
-if campos_faltando:
+    if "pergunta" in PAPEIS:
+        campos_origem_necessarios.add(config["pergunta_campo"])
 
-    print("\n" + "=" * 60)
-    print("ERRO: Campos obrigatórios não encontrados.")
-    print("=" * 60)
+    if "resposta" in PAPEIS:
+        if config["tipo"] == "cloze":
+            # no cloze, a resposta também é extraída do campo de pergunta (Texto)
+            campos_origem_necessarios.add(config["pergunta_campo"])
+        else:
+            campos_origem_necessarios.add(config["resposta_campo"])
 
-    print("\nCampos faltando:")
+    amostra = notas[0]
+    faltando = [c for c in campos_origem_necessarios if c not in amostra["fields"]]
 
-    for campo in campos_faltando:
-        print(f"- {campo}")
+    if faltando:
+        print(f"Aviso: notas '{model_name}' sem os campos {faltando}. "
+              f"Ignorando {len(notas)} nota(s) desse tipo.")
+        print(f"""
+Como resolver (para '{model_name}'):
 
-    print("""
-
-Como resolver:
-
-1. Abra qualquer card no Anki
+1. Abra qualquer card desse tipo no Anki
 2. Vá em:
    Editar -> Cards... -> Fields... -> Add
-
-3. Crie os campos faltando
-
-Exemplo:
-- AudioFrente
-- AudioVerso
-
-4. Depois adicione no template:
-
-{{AudioFrente}}
-{{AudioVerso}}
-
+3. Crie os campos faltando: {", ".join(faltando)}
 """)
+        continue
 
+    infos_processaveis.extend(notas)
+
+if not infos_processaveis:
+    print("\nNenhuma nota processável encontrada. Encerrando.")
     exit()
 
-print(f"\nTOTAL DE CARDS: {TOTAL}\n")
+TOTAL = len(infos_processaveis)
+
+print(f"\nTOTAL DE CARDS PROCESSÁVEIS: {TOTAL}\n")
 
 # =========================
 # VERIFICAR ÁUDIOS EXISTENTES
@@ -219,18 +386,13 @@ print(f"\nTOTAL DE CARDS: {TOTAL}\n")
 
 audios_existentes = False
 
-for note in infos:
+for note in infos_processaveis:
 
-    for campo in CAMPOS:
+    config = NOTE_TYPES[note["modelName"]]
 
-        if campo == "Frente":
-            campo_destino = "AudioFrente"
+    for papel in PAPEIS:
 
-        elif campo == "Verso":
-            campo_destino = "AudioVerso"
-
-        else:
-            continue
+        campo_destino = config[f"{papel}_destino"]
 
         if campo_destino not in note["fields"]:
             continue
@@ -269,34 +431,92 @@ O que deseja fazer?
         REFAZER_AUDIOS = True
 
 # =========================
-# LOOP
+# LOOP PRINCIPAL
 # =========================
 
-for i, note in enumerate(infos, start=1):
+for i, note in enumerate(infos_processaveis, start=1):
 
     note_id = note["noteId"]
+    model_name = note["modelName"]
+    config = NOTE_TYPES[model_name]
 
     print("=" * 60)
-    print(f"[{i}/{TOTAL}]")
+    print(f"[{i}/{TOTAL}] ({model_name})")
 
-    for campo in CAMPOS:
+    for papel in PAPEIS:
+
+        campo_destino = config[f"{papel}_destino"]
 
         # -------------------------
-        # VERIFICA CAMPO
+        # MONTAR O TEXTO A SER FALADO
         # -------------------------
 
-        if campo not in note["fields"]:
-            print(f"Sem campo '{campo}'")
-            continue
+        if config["tipo"] == "normal":
 
-        texto = limpar_texto(
-            note["fields"][campo]["value"]
-        )
+            campo_origem = config[f"{papel}_campo"]
+
+            if campo_origem not in note["fields"]:
+                print(f"Sem campo '{campo_origem}'")
+                continue
+
+            texto = limpar_texto(note["fields"][campo_origem]["value"])
+
+            segmentos = [("texto", texto)]
+
+        else:  # tipo == "cloze"
+
+            campo_texto = config["pergunta_campo"]  # sempre "Texto"
+
+            if campo_texto not in note["fields"]:
+                print(f"Sem campo '{campo_texto}'")
+                continue
+
+            valor_texto = note["fields"][campo_texto]["value"]
+
+            if papel == "pergunta":
+
+                # Divide a frase em pedaços de fala, marcando com uma
+                # "pausa" cada trecho onde havia um {{cN::...}}. A pausa
+                # vira 1s de silêncio real no áudio (não revela a resposta).
+                segmentos = []
+
+                for tipo_seg, conteudo_seg in dividir_em_segmentos_cloze(valor_texto):
+
+                    if tipo_seg == "pausa":
+                        segmentos.append(("pausa", None))
+                    else:
+                        texto_limpo = limpar_texto(conteudo_seg)
+                        if texto_limpo:
+                            segmentos.append(("texto", texto_limpo))
+
+            else:  # papel == "resposta"
+
+                # Lê o conteúdo que estava escondido em {{cN::conteudo}},
+                # limpando cada trecho (remove tags HTML etc.) antes de juntar
+                respostas = extrair_respostas_cloze(valor_texto)
+                respostas_limpas = [limpar_texto(r) for r in respostas]
+                texto_respostas = ", ".join([r for r in respostas_limpas if r])
+
+                # E soma o que estiver digitado manualmente no campo Extra
+                campo_extra = config["resposta_campo"]  # "Extra"
+                valor_extra = note["fields"].get(campo_extra, {}).get("value", "")
+                texto_extra = limpar_texto(valor_extra)
+
+                partes = [p for p in [texto_respostas, texto_extra] if p]
+                texto = ". ".join(partes)
+
+                segmentos = [("texto", texto)]
+
+        # Texto "achatado" (só os pedaços falados, sem marcar as pausas),
+        # usado para checagem de vazio/validação e para o preview no console
+        texto = " ".join(
+            conteudo for tipo_seg, conteudo in segmentos if tipo_seg == "texto"
+        ).strip()
 
         if not texto:
-            print(f"{campo} vazio")
+            print(f"{campo_destino} vazio")
             continue
-        
+
         # =========================
         # VALIDAR TEXTO FALÁVEL
         # =========================
@@ -308,30 +528,21 @@ for i, note in enumerate(infos, start=1):
         )
 
         if not texto_validacao.strip():
-            print(f"{campo} contém apenas símbolos inválidos")
+            print(f"{campo_destino} contém apenas símbolos inválidos")
             continue
 
-        nome_audio = f"{note_id}_{campo}.mp3"
+        # label usado no nome do arquivo (mantém compatibilidade com
+        # arquivos antigos do Basic_audio: 123456_Frente.mp3 etc.)
+        label = campo_destino[5:] if campo_destino.startswith("Audio") else campo_destino
+
+        nome_audio = f"{note_id}_{label}.mp3"
 
         caminho_audio = os.path.join(
             TEMP_DIR,
             nome_audio
         )
 
-        # -------------------------
-        # CAMPO AUDIO
-        # -------------------------
-
         audio_tag = f"[sound:{nome_audio}]"
-
-        if campo == "Frente":
-            campo_destino = "AudioFrente"
-
-        elif campo == "Verso":
-            campo_destino = "AudioVerso"
-
-        else:
-            campo_destino = "Audio"
 
         # -------------------------
         # SE JÁ EXISTE
@@ -382,50 +593,28 @@ for i, note in enumerate(infos, start=1):
                 except Exception:
                     pass
 
-        print(f"\nGerando {campo}...")
+        print(f"\nGerando {papel} ({campo_destino})...")
         print(f"Texto: {texto[:80]}")
 
-        sucesso = False
+        sucesso, erro = asyncio.run(
+            gerar_audio_segmentado(
+                segmentos,
+                caminho_audio
+            )
+        )
 
-        for tentativa in range(1, MAX_RETRIES + 1):
+        if sucesso:
 
-            print(f"Tentativa {tentativa}/{MAX_RETRIES}")
+            invoke(
+                "storeMediaFile",
+                filename=nome_audio,
+                path=caminho_audio
+            )
 
-            try:
+        else:
 
-                retorno, out, err = asyncio.run(
-                    gerar_audio(
-                        texto,
-                        caminho_audio
-                    )
-                )
-
-                if (
-                    retorno == 0
-                    and os.path.exists(caminho_audio)
-                    and os.path.getsize(caminho_audio) > 0
-                ):
-
-                    invoke(
-                        "storeMediaFile",
-                        filename=nome_audio,
-                        path=caminho_audio
-                    )
-
-                    sucesso = True
-                    break
-
-                else:
-
-                    print("Falha Edge-TTS")
-                    print(err)
-
-            except Exception as e:
-
-                print(f"EXCEPTION: {e}")
-
-        if not sucesso:
-
+            print("Falha Edge-TTS")
+            print(erro)
             print("ERRO FINAL")
             continue
 

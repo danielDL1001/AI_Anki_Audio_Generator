@@ -11,6 +11,7 @@ idna==3.13
 multidict==6.7.1
 playsound==1.2.2
 propcache==0.4.1
+pydub==0.25.1
 pygame==2.6.1
 requests==2.33.1
 tabulate==0.10.0
