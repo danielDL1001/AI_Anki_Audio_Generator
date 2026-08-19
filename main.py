@@ -23,6 +23,11 @@ VOICE = "pt-BR-FranciscaNeural"
 # pergunta, em milissegundos. 1000 = 1 segundo.
 CLOZE_PAUSA_MS = 20
 
+# Bitrate usado ao exportar o MP3 final do Cloze_audio pelo pydub.
+# Só o Cloze passa pelo pydub (precisa juntar segmentos + silêncio), então
+# usamos um bitrate mais alto para minimizar a perda na recompressão.
+CLOZE_EXPORT_BITRATE = "192k"
+
 HOME = os.path.expanduser("~")
 
 TEMP_DIR = os.path.join(
@@ -39,7 +44,12 @@ MAX_RETRIES = 3
 # =========================
 #
 # "tipo": "normal" -> lê o campo diretamente (Basic_audio)
+#          -> áudio gerado DIRETO pelo edge-tts, sem passar pelo pydub,
+#             pois não há pausas de cloze para juntar. Isso preserva a
+#             qualidade original do MP3 (evita decodificar e reexportar).
 # "tipo": "cloze"  -> lê o campo com cloze, tratando {{c1::...}} de forma especial
+#          -> aqui o pydub é necessário, pois é preciso concatenar
+#             segmentos de fala com trechos de silêncio real no meio.
 #
 # pergunta_campo / resposta_campo = campos de ORIGEM (onde está o texto)
 # pergunta_destino / resposta_destino = campos de DESTINO (onde o áudio é salvo)
@@ -95,8 +105,8 @@ def dividir_em_segmentos_cloze(texto):
     """Divide o texto da pergunta em segmentos de fala, marcando com
     ("pausa", None) os pontos onde havia um {{cN::conteudo}}.
 
-    Isso permite que, no áudio final, o trecho escondido vire 1 segundo
-    de silêncio real, em vez de ser simplesmente pulado/ignorado."""
+    Isso permite que, no áudio final, o trecho escondido vire silêncio
+    real, em vez de ser simplesmente pulado/ignorado."""
 
     segmentos = []
     ultimo_fim = 0
@@ -191,6 +201,40 @@ async def gerar_audio(texto, arquivo):
     )
 
 
+async def gerar_audio_unico(texto, arquivo):
+    """
+    Gera o áudio de um texto simples (sem pausas de cloze) DIRETO no
+    arquivo final, escrito pelo próprio edge-tts.
+
+    Usado para notas do tipo "normal" (Basic_audio). Como não há nada
+    para concatenar, não faz sentido passar o resultado pelo pydub: isso
+    só decodificaria e reexportaria o MP3 (perda de qualidade
+    desnecessária). Aqui o arquivo final é exatamente o que o edge-tts
+    gerou, com retry em caso de falha.
+    """
+
+    ultimo_erro = ""
+
+    for tentativa in range(1, MAX_RETRIES + 1):
+
+        try:
+            retorno, out, err = await gerar_audio(texto, arquivo)
+
+            if (
+                retorno == 0
+                and os.path.exists(arquivo)
+                and os.path.getsize(arquivo) > 0
+            ):
+                return True, None
+
+            ultimo_erro = err
+
+        except Exception as e:
+            ultimo_erro = str(e)
+
+    return False, f"Falha ao gerar áudio: {ultimo_erro}"
+
+
 async def gerar_audio_segmentado(segmentos, arquivo_final):
     """
     Gera o áudio final a partir de uma lista de segmentos no formato:
@@ -198,8 +242,13 @@ async def gerar_audio_segmentado(segmentos, arquivo_final):
         [("texto", "algum texto"), ("pausa", None), ("texto", "outro texto")]
 
     - Cada segmento ("texto", ...) é sintetizado normalmente via Edge-TTS.
-    - Cada segmento ("pausa", None) vira 1 segundo de silêncio REAL no
-      áudio final (em vez de simplesmente não existir).
+    - Cada segmento ("pausa", None) vira silêncio REAL no áudio final (em
+      vez de simplesmente não existir).
+
+    Usado apenas para o Cloze_audio, onde é indispensável juntar pedaços
+    de fala com silêncio no meio -- por isso é o único caso em que
+    passamos pelo pydub. A exportação final usa CLOZE_EXPORT_BITRATE para
+    minimizar a perda de qualidade dessa recompressão.
 
     Retorna (sucesso: bool, mensagem_erro: str | None).
     """
@@ -258,7 +307,11 @@ async def gerar_audio_segmentado(segmentos, arquivo_final):
     if not algum_audio_gerado:
         return False, "Nenhum segmento de áudio foi gerado"
 
-    audio_final.export(arquivo_final, format="mp3")
+    audio_final.export(
+        arquivo_final,
+        format="mp3",
+        bitrate=CLOZE_EXPORT_BITRATE
+    )
 
     return True, None
 
@@ -477,7 +530,7 @@ for i, note in enumerate(infos_processaveis, start=1):
 
                 # Divide a frase em pedaços de fala, marcando com uma
                 # "pausa" cada trecho onde havia um {{cN::...}}. A pausa
-                # vira 1s de silêncio real no áudio (não revela a resposta).
+                # vira silêncio real no áudio (não revela a resposta).
                 segmentos = []
 
                 for tipo_seg, conteudo_seg in dividir_em_segmentos_cloze(valor_texto):
@@ -596,12 +649,28 @@ for i, note in enumerate(infos_processaveis, start=1):
         print(f"\nGerando {papel} ({campo_destino})...")
         print(f"Texto: {texto[:80]}")
 
-        sucesso, erro = asyncio.run(
-            gerar_audio_segmentado(
-                segmentos,
-                caminho_audio
+        if config["tipo"] == "normal":
+
+            # Basic_audio: sem pausas de cloze -> gera direto com o
+            # Edge-TTS, sem passar pelo pydub (evita perda de qualidade
+            # por recompressão do MP3).
+            sucesso, erro = asyncio.run(
+                gerar_audio_unico(
+                    texto,
+                    caminho_audio
+                )
             )
-        )
+
+        else:
+
+            # Cloze_audio: precisa juntar segmentos de fala com pausas
+            # reais de silêncio -> só aqui é necessário usar o pydub.
+            sucesso, erro = asyncio.run(
+                gerar_audio_segmentado(
+                    segmentos,
+                    caminho_audio
+                )
+            )
 
         if sucesso:
 
