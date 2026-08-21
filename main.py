@@ -232,6 +232,9 @@ async def gerar_audio_unico(texto, arquivo):
         except Exception as e:
             ultimo_erro = str(e)
 
+        if tentativa < MAX_RETRIES:
+            await asyncio.sleep(1 * tentativa)
+
     return False, f"Falha ao gerar áudio: {ultimo_erro}"
 
 
@@ -270,6 +273,12 @@ async def gerar_audio_segmentado(segmentos, arquivo_final):
         if not texto_segmento:
             continue
 
+        # Se o segmento não tem nenhuma letra/número falável (ex.: sobrou
+        # só um "." ou "," depois de remover o cloze), o edge-tts falha
+        # com "NoAudioReceived". Trata como se fosse vazio e pula.
+        if not re.search(r"[\wÀ-ÿ]", texto_segmento):
+            continue
+
         caminho_temp = f"{arquivo_final}.part{indice}.mp3"
 
         sucesso_segmento = False
@@ -291,6 +300,9 @@ async def gerar_audio_segmentado(segmentos, arquivo_final):
 
             except Exception as e:
                 ultimo_erro = str(e)
+
+            if tentativa < MAX_RETRIES:
+                await asyncio.sleep(1 * tentativa)
 
         if not sucesso_segmento:
             return False, f"Falha ao gerar segmento de áudio: {ultimo_erro}"
