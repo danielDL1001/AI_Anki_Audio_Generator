@@ -14,7 +14,7 @@ async def falar():
     # Gera voz
     communicate = edge_tts.Communicate(
         text=texto,
-        voice="pt-BR-AntonioNeural" # Aqui pode alterar para outra voz disponível
+        voice="pt-BR-FranciscaNeural" # Aqui pode alterar para outra voz disponível
     )
 
     await communicate.save(caminho)
