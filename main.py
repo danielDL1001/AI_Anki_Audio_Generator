@@ -479,7 +479,7 @@ NUMEROS_EXTENSO = {
     "5": "cinco", "6": "seis", "7": "sete", "8": "oito", "9": "nove",
     "10": "dez", "11": "onze", "12": "doze", "13": "treze", "14": "catorze",
     "15": "quinze", "16": "dezesseis", "17": "dezessete", "18": "dezoito",
-    "19": "dezenove", "20": "vinte",
+    "19": "dezenove", "l": "vinte",
 }
 
 # Funções/comandos "de um argumento só" que são lidos com o próprio nome
@@ -498,36 +498,166 @@ FUNCOES_CONHECIDAS = {
 # Mantido num dicionário só para facilitar adicionar novos símbolos sem
 # mexer na lógica de parsing.
 SIMBOLOS_LATEX = {
+
+    # Limites e tendências
     r"\to": "tende a",
     r"\rightarrow": "tende a",
+    r"\leftarrow": "tende a",
+    r"\Rightarrow": "implica",
+    r"\Longrightarrow": "implica",
     r"\infty": "infinito",
+
+    # Comparações
     r"\leq": "menor ou igual a",
     r"\le": "menor ou igual a",
     r"\geq": "maior ou igual a",
     r"\ge": "maior ou igual a",
     r"\neq": "diferente de",
     r"\ne": "diferente de",
+    r"\approx": "aproximadamente igual a",
+    r"\equiv": "equivalente a",
+    r"\sim": "semelhante a",
+    r"\simeq": "aproximadamente equivalente a",
+    r"\propto": "proporcional a",
+
+    # Operações
     r"\pm": "mais ou menos",
     r"\mp": "menos ou mais",
+    r"\cdot": "vezes",
+    r"\times": "vezes",
+    r"\div": "dividido por",
+    r"\ast": "vezes",
+    r"\circ": "composição",
+    r"\oplus": "soma direta",
+    r"\otimes": "produto tensorial",
+
+    # Grego
     r"\pi": "pi",
     r"\alpha": "alfa",
     r"\beta": "beta",
     r"\gamma": "gama",
     r"\theta": "teta",
     r"\delta": "delta",
-    r"\Delta": "delta",
-    r"\cdot": "vezes",
-    r"\times": "vezes",
-    r"\div": "dividido por",
-    r"\approx": "aproximadamente igual a",
-    r"\equiv": "equivalente a",
+    r"\Delta": "delta maiúsculo",
+    r"\epsilon": "épsilon",
+    r"\varepsilon": "épsilon",
+    r"\lambda": "lambda",
+    r"\mu": "mi",
+    r"\sigma": "sigma",
+    r"\Sigma": "sigma maiúsculo",
+    r"\omega": "ômega",
+    r"\Omega": "ômega maiúsculo",
+    r"\phi": "fi",
+    r"\varphi": "fi",
+    r"\rho": "rô",
+    r"\tau": "tau",
+    r"\xi": "csi",
+    r"\zeta": "zeta",
+    r"\eta": "eta",
+
+    # Funções e operadores
+    r"\partial": "derivada parcial",
+    r"\nabla": "nabla",
+    r"\nabla^2": "laplaciano",
+    r"\lim": "limite",
+    r"\max": "máximo",
+    r"\min": "mínimo",
+    r"\sup": "supremo",
+    r"\inf": "ínfimo",
+    r"\det": "determinante",
+    r"\log": "logaritmo",
+    r"\ln": "logaritmo natural",
+    r"\exp": "exponencial",
+    r"\sin": "seno",
+    r"\cos": "cosseno",
+    r"\tan": "tangente",
+    r"\cot": "cotangente",
+    r"\sec": "secante",
+    r"\csc": "cossecante",
+
+    # Cálculo
+    r"\sum": "somatório",
+    r"\prod": "produtório",
+    r"\int": "integral",
+    r"\iint": "integral dupla",
+    r"\iiint": "integral tripla",
+    r"\oint": "integral de contorno",
+    r"\lim": "limite",
+    r"\dfrac": "fração",
+    r"\frac": "fração",
+    r"\sqrt": "raiz quadrada",
+    r"\sqrt[n]": "raiz de índice n",
+    r"\prime": "linha (derivada)",
+    r"\dot": "derivada temporal",
+    r"\ddot": "segunda derivada temporal",
+
+    # Conjuntos e lógica
     r"\in": "pertence a",
+    r"\notin": "não pertence a",
+    r"\subset": "está contido em",
+    r"\subseteq": "está contido ou é igual a",
+    r"\supset": "contém",
+    r"\supseteq": "contém ou é igual a",
+    r"\cup": "união",
+    r"\cap": "interseção",
+    r"\emptyset": "conjunto vazio",
+    r"\varnothing": "conjunto vazio",
     r"\forall": "para todo",
     r"\exists": "existe",
-    r"\partial": "derivada parcial",
+    r"\nexists": "não existe",
+    r"\land": "e lógico",
+    r"\lor": "ou lógico",
+    r"\neg": "negação",
+    r"\implies": "implica",
+    r"\iff": "se e somente se",
+
+    # Texto e formatação
+    r"\text": "texto",
+    r"\mathrm": "texto em romano",
+    r"\mathbf": "negrito",
+    r"\mathit": "itálico",
+    r"\mathbb": "conjunto numérico",
+    r"\mathcal": "letra caligráfica",
+    r"\mathfrak": "letra gótica",
+    r"\operatorname": "operador matemático",
+
+    # Espaçamento
+    r"\quad": "espaço",
+    r"\qquad": "espaço grande",
+    r"\,": "espaço pequeno",
+    r"\;": "espaço médio",
+    r"\!": "espaço negativo",
+
+    # Reticências
     r"\ldots": "e assim por diante",
-    r"\dots": "e assim por diante",
     r"\cdots": "e assim por diante",
+    r"\vdots": "reticências verticais",
+    r"\ddots": "reticências diagonais",
+    r"\dots": "e assim por diante",
+
+    # Setas
+    r"\uparrow": "seta para cima",
+    r"\downarrow": "seta para baixo",
+    r"\leftarrow": "seta para a esquerda",
+    r"\rightarrow": "seta para a direita",
+    r"\leftrightarrow": "seta para os dois lados",
+    r"\Rightarrow": "implica",
+    r"\Leftrightarrow": "equivalente a",
+    r"\mapsto": "mapeia em",
+
+    # Outros símbolos
+    r"\degree": "graus",
+    r"\angle": "ângulo",
+    r"\perp": "perpendicular",
+    r"\parallel": "paralelo",
+    r"\mid": "tal que",
+    r"\therefore": "portanto",
+    r"\because": "porque",
+    r"\aleph": "alef",
+    r"\Re": "parte real",
+    r"\Im": "parte imaginária",
+    r"\ell": "ele cursivo",
+    r"\hbar": "h cortado",
 }
 
 # Fórmulas delimitadas do jeito que o Anki/MathJax normalmente grava:
@@ -1491,7 +1621,7 @@ for i, note in enumerate(infos_processaveis, start=1):
         # arquivos antigos do Basic_audio: 123456_Frente.mp3 etc.)
         label = campo_destino[5:] if campo_destino.startswith("Audio") else campo_destino
 
-        nome_audio = f"{note_id}_{label}.mp3"
+        nome_audio = f"{note_id}_{label.lower()}.mp3"
 
         caminho_audio = os.path.join(
             TEMP_DIR,
