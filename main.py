@@ -499,6 +499,56 @@ FUNCOES_CONHECIDAS = {
 # mexer na lógica de parsing.
 SIMBOLOS_LATEX = {
 
+    # Estatística, Posição e Notação Numérica (Excelente para Anki/Cartões)
+    r"^{\circ}": "grau / ordinal",
+    r"\hat": "chapéu (estimativa / média)",
+    r"\bar": "barra (média amostral)",
+    r"\tilde": "til (mediana / estimador)",
+    r"\vec": "vetor",
+    r"\overline": "barra superior",
+
+    # Conjuntos Numéricos (\mathbb)
+    r"\mathbb{N}": "números naturais",
+    r"\mathbb{Z}": "números inteiros",
+    r"\mathbb{Q}": "números racionais",
+    r"\mathbb{R}": "números reais",
+    r"\mathbb{C}": "números complexos",
+
+    # Lógica, Conjuntos e Relações Adicionais
+    r"\setminus": "diferença de conjuntos (menos)",
+    r"\complement": "complementar",
+    r"\nint": "não pertence",
+    r"\not": "negação / nega o símbolo seguinte",
+    r"\models": "satisfaz / modelo de",
+    r"\vdash": "demonstra / acarreta",
+    r"\bot": "falso / contradição / perpendicular",
+    r"\top": "verdadeiro / tautologia",
+
+    # Geometria e Vetores
+    r"\vec": "vetor",
+    r"\nabla \times": "rotacional",
+    r"\nabla \cdot": "divergente",
+    r"\Vert": "norma / módulo duplo",
+    r"\vert": "módulo / valor absoluto / tal que",
+
+    # Delimitadores e Enquadramento (Ajuste Visual)
+    r"\left": "delimitador esquerdo ajustável",
+    r"\right": "delimitador direito ajustável",
+    r"\lfloor": "piso (arredonda para baixo)",
+    r"\rfloor": "piso (fechamento)",
+    r"\lceil": "teto (arredonda para cima)",
+    r"\rceil": "teto (fechamento)",
+    r"\langle": "ângulo esquerdo (produto interno)",
+    r"\rangle": "ângulo direito (produto interno)",
+
+    # Outros Símbolos do Grego Úteis
+    r"\kappa": "capa",
+    r"\chi": "qui (teste qui-quadrado)",
+    r"\psi": "psi",
+    r"\Psi": "psi maiúsculo",
+    r"\nu": "nu (graus de liberdade)",
+    r"\Upsilon": "upsilon",
+
     # Limites e tendências
     r"\to": "tende a",
     r"\rightarrow": "tende a",
