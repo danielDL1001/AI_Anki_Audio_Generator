@@ -5,6 +5,7 @@ import re
 import json
 import html
 import subprocess
+import sys
 
 try:
     from pydub import AudioSegment
@@ -18,7 +19,7 @@ except ImportError:
 # CONFIG
 # =========================
 
-VOICE = "pt-BR-FranciscaNeural"
+VOICE = "en-GB-SoniaNeural"
 
 # Duração da pausa (silêncio) que substitui o {{c1::...}} no áudio da
 # pergunta, em milissegundos. 1000 = 1 segundo.
@@ -499,89 +500,52 @@ FUNCOES_CONHECIDAS = {
 # mexer na lógica de parsing.
 SIMBOLOS_LATEX = {
 
-    # Estatística, Posição e Notação Numérica (Excelente para Anki/Cartões)
-    r"^{\circ}": "grau / ordinal",
-    r"\hat": "chapéu (estimativa / média)",
-    r"\bar": "barra (média amostral)",
-    r"\tilde": "til (mediana / estimador)",
+    # Estatística, posição e notação
+
+    r"\hat": "chapéu",
+    r"\bar": "barra",
+    r"\tilde": "til",
     r"\vec": "vetor",
     r"\overline": "barra superior",
 
-    # Conjuntos Numéricos (\mathbb)
-    r"\mathbb{N}": "números naturais",
-    r"\mathbb{Z}": "números inteiros",
-    r"\mathbb{Q}": "números racionais",
-    r"\mathbb{R}": "números reais",
-    r"\mathbb{C}": "números complexos",
+    # Lógica, conjuntos e relações
 
-    # Lógica, Conjuntos e Relações Adicionais
-    r"\setminus": "diferença de conjuntos (menos)",
+    r"\setminus": "diferença de conjuntos",
     r"\complement": "complementar",
     r"\nint": "não pertence",
-    r"\not": "negação / nega o símbolo seguinte",
-    r"\models": "satisfaz / modelo de",
-    r"\vdash": "demonstra / acarreta",
-    r"\bot": "falso / contradição / perpendicular",
-    r"\top": "verdadeiro / tautologia",
+    r"\not": "negação",
+    r"\models": "satisfaz",
+    r"\vdash": "demonstra",
+    r"\bot": "falso",
+    r"\top": "verdadeiro",
 
-    # Geometria e Vetores
-    r"\vec": "vetor",
-    r"\nabla \times": "rotacional",
-    r"\nabla \cdot": "divergente",
-    r"\Vert": "norma / módulo duplo",
-    r"\vert": "módulo / valor absoluto / tal que",
+    # Geometria e vetores
 
-    # Delimitadores e Enquadramento (Ajuste Visual)
-    r"\left": "delimitador esquerdo ajustável",
-    r"\right": "delimitador direito ajustável",
-    r"\lfloor": "piso (arredonda para baixo)",
-    r"\rfloor": "piso (fechamento)",
-    r"\lceil": "teto (arredonda para cima)",
-    r"\rceil": "teto (fechamento)",
-    r"\langle": "ângulo esquerdo (produto interno)",
-    r"\rangle": "ângulo direito (produto interno)",
+    r"\nabla": "nabla",
+    r"\Vert": "norma",
+    r"\vert": "módulo",
+    r"\angle": "ângulo",
+    r"\perp": "perpendicular",
+    r"\parallel": "paralelo",
 
-    # Outros Símbolos do Grego Úteis
-    r"\kappa": "capa",
-    r"\chi": "qui (teste qui-quadrado)",
-    r"\psi": "psi",
-    r"\Psi": "psi maiúsculo",
-    r"\nu": "nu (graus de liberdade)",
-    r"\Upsilon": "upsilon",
+    # Delimitadores
 
-    # Limites e tendências
-    r"\to": "tende a",
-    r"\rightarrow": "tende a",
-    r"\leftarrow": "tende a",
-    r"\Rightarrow": "implica",
-    r"\Longrightarrow": "implica",
-    r"\infty": "infinito",
-
-    # Comparações
-    r"\leq": "menor ou igual a",
-    r"\le": "menor ou igual a",
-    r"\geq": "maior ou igual a",
-    r"\ge": "maior ou igual a",
-    r"\neq": "diferente de",
-    r"\ne": "diferente de",
-    r"\approx": "aproximadamente igual a",
-    r"\equiv": "equivalente a",
-    r"\sim": "semelhante a",
-    r"\simeq": "aproximadamente equivalente a",
-    r"\propto": "proporcional a",
-
-    # Operações
-    r"\pm": "mais ou menos",
-    r"\mp": "menos ou mais",
-    r"\cdot": "vezes",
-    r"\times": "vezes",
-    r"\div": "dividido por",
-    r"\ast": "vezes",
-    r"\circ": "composição",
-    r"\oplus": "soma direta",
-    r"\otimes": "produto tensorial",
+    r"\left": "delimitador esquerdo",
+    r"\right": "delimitador direito",
+    r"\lfloor": "piso",
+    r"\rfloor": "piso",
+    r"\lceil": "teto",
+    r"\rceil": "teto",
 
     # Grego
+
+    r"\kappa": "capa",
+    r"\chi": "qui",
+    r"\psi": "psi",
+    r"\Psi": "psi maiúsculo",
+    r"\nu": "nu",
+    r"\Upsilon": "upsilon",
+
     r"\pi": "pi",
     r"\alpha": "alfa",
     r"\beta": "beta",
@@ -605,10 +569,44 @@ SIMBOLOS_LATEX = {
     r"\zeta": "zeta",
     r"\eta": "eta",
 
+    # Limites e tendências
+
+    r"\to": "tende a",
+    r"\rightarrow": "tende a",
+    r"\leftarrow": "tende a",
+    r"\Rightarrow": "implica",
+    r"\Longrightarrow": "implica",
+    r"\infty": "infinito",
+
+    # Comparações
+
+    r"\leq": "menor ou igual a",
+    r"\le": "menor ou igual a",
+    r"\geq": "maior ou igual a",
+    r"\ge": "maior ou igual a",
+    r"\neq": "diferente de",
+    r"\ne": "diferente de",
+    r"\approx": "aproximadamente igual a",
+    r"\equiv": "equivalente a",
+    r"\sim": "semelhante a",
+    r"\simeq": "aproximadamente equivalente a",
+    r"\propto": "proporcional a",
+
+    # Operações
+
+    r"\pm": "mais ou menos",
+    r"\mp": "menos ou mais",
+    r"\cdot": "vezes",
+    r"\times": "vezes",
+    r"\div": "dividido por",
+    r"\ast": "vezes",
+    r"\circ": "composição",
+    r"\oplus": "soma direta",
+    r"\otimes": "produto tensorial",
+
     # Funções e operadores
+
     r"\partial": "derivada parcial",
-    r"\nabla": "nabla",
-    r"\nabla^2": "laplaciano",
     r"\lim": "limite",
     r"\max": "máximo",
     r"\min": "mínimo",
@@ -626,22 +624,24 @@ SIMBOLOS_LATEX = {
     r"\csc": "cossecante",
 
     # Cálculo
+
     r"\sum": "somatório",
     r"\prod": "produtório",
     r"\int": "integral",
     r"\iint": "integral dupla",
     r"\iiint": "integral tripla",
     r"\oint": "integral de contorno",
-    r"\lim": "limite",
+
     r"\dfrac": "fração",
     r"\frac": "fração",
     r"\sqrt": "raiz quadrada",
-    r"\sqrt[n]": "raiz de índice n",
-    r"\prime": "linha (derivada)",
+
+    r"\prime": "linha",
     r"\dot": "derivada temporal",
     r"\ddot": "segunda derivada temporal",
 
-    # Conjuntos e lógica
+    # Conjuntos
+
     r"\in": "pertence a",
     r"\notin": "não pertence a",
     r"\subset": "está contido em",
@@ -652,16 +652,20 @@ SIMBOLOS_LATEX = {
     r"\cap": "interseção",
     r"\emptyset": "conjunto vazio",
     r"\varnothing": "conjunto vazio",
+
+    # Lógica
+
     r"\forall": "para todo",
     r"\exists": "existe",
     r"\nexists": "não existe",
-    r"\land": "e lógico",
-    r"\lor": "ou lógico",
+    r"\land": "e",
+    r"\lor": "ou",
     r"\neg": "negação",
     r"\implies": "implica",
     r"\iff": "se e somente se",
 
     # Texto e formatação
+
     r"\text": "texto",
     r"\mathrm": "texto em romano",
     r"\mathbf": "negrito",
@@ -672,13 +676,15 @@ SIMBOLOS_LATEX = {
     r"\operatorname": "operador matemático",
 
     # Espaçamento
-    r"\quad": "espaço",
-    r"\qquad": "espaço grande",
+
+    r"\quad": "espaço grande",
+    r"\qquad": "espaço muito grande",
     r"\,": "espaço pequeno",
     r"\;": "espaço médio",
     r"\!": "espaço negativo",
 
     # Reticências
+
     r"\ldots": "e assim por diante",
     r"\cdots": "e assim por diante",
     r"\vdots": "reticências verticais",
@@ -686,20 +692,16 @@ SIMBOLOS_LATEX = {
     r"\dots": "e assim por diante",
 
     # Setas
+
     r"\uparrow": "seta para cima",
     r"\downarrow": "seta para baixo",
-    r"\leftarrow": "seta para a esquerda",
-    r"\rightarrow": "seta para a direita",
     r"\leftrightarrow": "seta para os dois lados",
-    r"\Rightarrow": "implica",
     r"\Leftrightarrow": "equivalente a",
     r"\mapsto": "mapeia em",
 
-    # Outros símbolos
+    # Outros
+
     r"\degree": "graus",
-    r"\angle": "ângulo",
-    r"\perp": "perpendicular",
-    r"\parallel": "paralelo",
     r"\mid": "tal que",
     r"\therefore": "portanto",
     r"\because": "porque",
@@ -709,6 +711,55 @@ SIMBOLOS_LATEX = {
     r"\ell": "ele cursivo",
     r"\hbar": "h cortado",
 }
+
+# Expressões compostas: o significado depende da COMBINAÇÃO de comandos,
+# então são reconhecidas ANTES dos símbolos atômicos (SIMBOLOS_LATEX) e
+# das estruturas (\frac, ^, _ ...). São regex tentadas na posição atual do
+# parser (nunca um str.replace global), da mais específica para a menos
+# específica; a primeira que casar vence. Todo comando termina com
+# (?![a-zA-Z]) para não casar dentro de outro comando (\in x \infty etc.).
+# Espaços entre as partes são opcionais (\s*).
+_NABLA = r"(?:\\vec\s*\{\s*\\nabla\s*\}|\\vec\s*\\nabla|\\nabla)(?![a-zA-Z])"
+
+EXPRESSOES_LATEX = [
+    # Operadores diferenciais (mais específicos primeiro)
+    (rf"{_NABLA}\s*\^\s*(?:\{{\s*2\s*\}}|2(?!\d))", "laplaciano"),
+    (rf"{_NABLA}\s*\\times(?![a-zA-Z])", "rotacional"),
+    (rf"{_NABLA}\s*\\cdot(?![a-zA-Z])", "divergente"),
+
+    # Grau: x^\circ, x^{\circ}  (\circ isolado continua "composição")
+    (r"\^\s*\{\s*\\circ\s*\}", "grau"),
+    (r"\^\s*\\circ(?![a-zA-Z])", "grau"),
+
+    # Conjuntos numéricos
+    (r"\\mathbb\s*\{\s*N\s*\}", "números naturais"),
+    (r"\\mathbb\s*\{\s*Z\s*\}", "números inteiros"),
+    (r"\\mathbb\s*\{\s*Q\s*\}", "números racionais"),
+    (r"\\mathbb\s*\{\s*R\s*\}", "números reais"),
+    (r"\\mathbb\s*\{\s*C\s*\}", "números complexos"),
+]
+
+EXPRESSOES_LATEX_COMPILADAS = [
+    (re.compile(padrao), fala) for padrao, fala in EXPRESSOES_LATEX
+]
+
+# Acentos/decorações: a leitura é SEMPRE "<base> <palavra>"
+# (\bar{x} -> "x barra", \hat{\theta} -> "teta chapéu").
+# A palavra vem de SIMBOLOS_LATEX (uma leitura única por comando).
+ACENTOS_LATEX = (r"\hat", r"\bar", r"\tilde", r"\vec", r"\overline")
+
+
+def _reconhecer_expressao_composta(expr, i):
+    """Tenta casar uma expressão composta de EXPRESSOES_LATEX exatamente
+    na posição i. Retorna (fala, novo_i) ou (None, i)."""
+
+    for regex, fala in EXPRESSOES_LATEX_COMPILADAS:
+        m = regex.match(expr, i)
+        if m:
+            return fala, m.end()
+
+    return None, i
+
 
 # Fórmulas delimitadas do jeito que o Anki/MathJax normalmente grava:
 # inline \( ... \), bloco \[ ... \], e as variantes antigas [$] ... [/$]
@@ -826,6 +877,17 @@ def _latex_para_fala(expr):
 
         if c.isspace():
             i += 1
+            continue
+
+        # -------------------------
+        # Expressões compostas (rotacional, divergente, laplaciano, grau,
+        # \mathbb{R}...): têm prioridade sobre símbolos/estruturas isolados
+        # -------------------------
+        fala_composta, novo_i = _reconhecer_expressao_composta(expr, i)
+
+        if fala_composta is not None:
+            resultado.append(fala_composta)
+            i = novo_i
             continue
 
         # -------------------------
@@ -984,6 +1046,16 @@ def _latex_para_fala(expr):
                 else:
                     resultado.append(f"somatório de {resto_falado}")
 
+                continue
+
+            # \bar{x}, \hat{\theta}, \tilde{x}, \vec{v}, \overline{AB}:
+            # lidos como "<base> <acento>" (ordem natural em português)
+            if comando in ACENTOS_LATEX:
+                base, i = _extrair_argumento(expr, i)
+                base_falada = _latex_para_fala(base)
+                resultado.append(
+                    f"{base_falada} {SIMBOLOS_LATEX[comando]}".strip()
+                )
                 continue
 
             # Símbolos conhecidos (\to, \infty, \pi, \leq, ...)
@@ -1173,6 +1245,70 @@ def mathjax_para_fala(texto):
             return re.sub(r"\s+", " ", fallback).strip()
 
     return MATHJAX_REGEX.sub(_substituir, texto)
+
+# =========================
+# AUTOTESTES DA CONVERSÃO MATEMÁTICA
+# =========================
+# Rodar com:  python main.py --testar-latex
+# (não acessa o Anki nem gera áudio; só valida _latex_para_fala)
+
+TESTES_LATEX = [
+    # (entrada LaTeX, saída esperada)
+    (r"x^\circ", "x grau"),
+    (r"x^{\circ}", "x grau"),
+    (r"x ^ { \circ }", "x grau"),
+    (r"f \circ g", "f composição g"),
+    (r"\nabla \times F", "rotacional F"),
+    (r"\nabla\times F", "rotacional F"),
+    (r"\nabla   \times   F", "rotacional F"),
+    (r"\nabla \cdot F", "divergente F"),
+    (r"\nabla\cdot F", "divergente F"),
+    (r"\nabla   \cdot   F", "divergente F"),
+    (r"\nabla^2 f", "laplaciano f"),
+    (r"\nabla ^2 f", "laplaciano f"),
+    (r"\nabla^{2} f", "laplaciano f"),
+    (r"\nabla ^{2} f", "laplaciano f"),
+    (r"\vec{\nabla} \times F", "rotacional F"),
+    (r"\nabla f", "nabla f"),
+    (r"\nabla^3 f", "nabla ao cubo f"),
+    (r"a \times b", "a vezes b"),
+    (r"a \cdot b", "a vezes b"),
+    (r"a \leq b", "a menor ou igual a b"),
+    (r"x \in A", "x pertence a A"),
+    (r"x \notin A", "x não pertence a A"),
+    (r"x \in \infty", "x pertence a infinito"),
+    (r"A \subseteq B", "A está contido ou é igual a B"),
+    (r"\forall x", "para todo x"),
+    (r"\exists x", "existe x"),
+    (r"\bar{x}", "x barra"),
+    (r"\hat{\theta}", "teta chapéu"),
+    (r"\tilde{x}", "x til"),
+    (r"x \in \mathbb{R}", "x pertence a números reais"),
+    (r"\sum_{i=1}^{n} x_i", "somatório de i igual a um até n de x índice i"),
+    (r"\frac{a}{b}", "a sobre b"),
+    (r"\sqrt{x}", "raiz quadrada de x"),
+    (r"\int_0^1 x dx", "integral de zero até um de x diferencial de x"),
+    (r"\lim_{x \to 0} f(x)", "limite de f de x quando x tende a zero"),
+]
+
+
+def executar_testes_latex():
+    falhas = 0
+
+    for entrada, esperado in TESTES_LATEX:
+        obtido = _latex_para_fala(entrada)
+        ok = obtido == esperado
+        falhas += 0 if ok else 1
+        print(f"[{'OK' if ok else 'FALHOU'}] {entrada}  ->  {obtido}"
+              + ("" if ok else f"   (esperado: {esperado})"))
+
+    print(f"\n{len(TESTES_LATEX) - falhas}/{len(TESTES_LATEX)} testes passaram.")
+    return falhas == 0
+
+
+if "--testar-latex" in sys.argv:
+    sys.exit(0 if executar_testes_latex() else 1)
+
 
 # =========================
 # LIMPAR TEXTO
