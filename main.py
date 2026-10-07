@@ -19,7 +19,7 @@ except ImportError:
 # CONFIG
 # =========================
 
-VOICE = "en-GB-SoniaNeural"
+VOICE = "pt-BR-FranciscaNeural"
 
 # Duração da pausa (silêncio) que substitui o {{c1::...}} no áudio da
 # pergunta, em milissegundos. 1000 = 1 segundo.
