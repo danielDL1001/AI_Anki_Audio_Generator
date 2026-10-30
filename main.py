@@ -1318,6 +1318,10 @@ if "--testar-latex" in sys.argv:
 
 def limpar_texto(texto):
 
+    # Remove blocos <style>...</style> INTEIROS (tag + conteúdo CSS) antes
+    # de tirar as demais tags, senão o CSS seria lido em voz alta.
+    texto = re.sub(r"<style\b[^>]*>.*?</style\s*>", " ", texto, flags=re.IGNORECASE | re.DOTALL)
+
     texto = re.sub(r"<[^>]+>", " ", texto)
     texto = re.sub(r"\[sound:[^\]]+\]", " ", texto)
     texto = re.sub(r"http\S+", " ", texto)
