@@ -1,3 +1,8 @@
+> [!NOTE]
+> **AI-Generated Content**
+>
+>  **Nota de Transparência:** A estrutura e o código deste repositório foram gerados com o auxílio de Inteligência Artificial (ex: ChatGPT, Claude, Copilot) e revisados manualmente.
+
 # Anki-Audio-Generator
 
 Generate speech audio automatically for your Anki cards using Edge-TTS + AnkiConnect.
