@@ -1,0 +1,53 @@
+name: Build Windows EXE
+
+on:
+  workflow_dispatch:        # botão "Run workflow" na aba Actions
+  push:
+    tags:
+      - "v*"                # ao criar uma tag (ex.: v1.0.0) publica uma Release
+
+permissions:
+  contents: write           # necessário para anexar o .exe na Release
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-build.txt
+
+      - name: Baixar ffmpeg (ffmpeg.exe e ffprobe.exe)
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile ffmpeg.zip
+          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg_tmp
+          New-Item -ItemType Directory -Force -Path ffmpeg | Out-Null
+          Get-ChildItem -Path ffmpeg_tmp -Recurse -Include ffmpeg.exe,ffprobe.exe | Copy-Item -Destination ffmpeg
+          Get-ChildItem ffmpeg
+
+      - name: Gerar executavel
+        run: >
+          pyinstaller --clean --noconfirm --onefile --console
+          --name Anki_Audio_Generator
+          --add-binary "ffmpeg/ffmpeg.exe;."
+          --add-binary "ffmpeg/ffprobe.exe;."
+          main.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Anki_Audio_Generator
+          path: dist/Anki_Audio_Generator.exe
+
+      - name: Publicar na Release (somente em tags)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/Anki_Audio_Generator.exe

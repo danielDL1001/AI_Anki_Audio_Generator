@@ -300,6 +300,38 @@ Mostra idioma, nome, país e gênero de cada voz.
 
 ---
 
+# 🪟 Windows: executável (.exe)
+
+Para quem não quer instalar Python, existe o executável `Anki_Audio_Generator.exe`. Basta abrir o Anki e dar dois cliques nele. Uma janela de terminal abre com o menu e **fica aberta no final**, para você ler o resultado ou o erro.
+
+## Como obter o .exe
+
+**Opção A: baixar pronto (Releases).** Quando uma versão é publicada na aba *Releases* do GitHub, o `.exe` já vem anexado.
+
+**Opção B: gerar pelo GitHub (sem precisar do Windows).** Na aba *Actions*, rode o workflow **Build Windows EXE** (botão *Run workflow*). O `.exe` aparece como artefato no fim da execução. Criar uma tag (ex.: `v1.0.0`) publica uma Release automaticamente.
+
+**Opção C: gerar no seu PC.**
+
+1. Baixe o `ffmpeg.exe` e o `ffprobe.exe` e coloque-os numa pasta `ffmpeg` ao lado do `build_windows.bat`.
+2. Dê dois cliques em `build_windows.bat`.
+3. O resultado fica em `dist\Anki_Audio_Generator.exe`.
+
+Se a pasta `ffmpeg` não existir, o `.exe` ainda é gerado, mas sem o ffmpeg embutido. Nesse caso os cards comuns funcionam e os cards **Cloze** exigem o ffmpeg instalado no PATH. O programa avisa isso ao iniciar.
+
+## Pontos de atenção do .exe
+
+- O Anki precisa estar **aberto** (com o AnkiConnect) antes de executar.
+- A primeira abertura é mais lenta, porque o `.exe` de arquivo único se descompacta numa pasta temporária.
+- O Windows SmartScreen ou o antivírus podem exibir um alerta, o que costuma acontecer com executáveis sem assinatura digital gerados pelo PyInstaller. É preciso confirmar manualmente para executar.
+- O `edge-tts` vem congelado dentro do `.exe`. Se a Microsoft mudar o serviço e a geração de voz parar de funcionar, será preciso gerar um `.exe` novo (opção B ou C) com `pip install -U edge-tts`.
+- Se for distribuir o `.exe` com o ffmpeg embutido, confira a licença do build do ffmpeg usado (muitos builds para Windows são GPL).
+
+## Alternativa sem Python: Docker com dois cliques
+
+O `INSTALL.md` descreve o caminho com Docker Desktop: `Instalar.bat` (uma vez) e `Iniciar.bat` (para usar).
+
+---
+
 # 🐳 Docker
 
 Também dá para rodar dentro de um container (a imagem já inclui o ffmpeg). O Anki continua rodando **no seu computador**, e o container conversa com o AnkiConnect pela rede.

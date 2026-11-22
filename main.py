@@ -5,6 +5,7 @@ import re
 import json
 import html
 import base64
+import shutil
 import sys
 
 try:
@@ -21,6 +22,43 @@ except ImportError:
     print("\nERRO: a biblioteca 'edge-tts' não está instalada.")
     print("Instale com: pip install edge-tts\n")
     sys.exit(1)
+
+
+def configurar_ffmpeg():
+    """Usa o ffmpeg/ffprobe que vierem junto do programa (embutidos no .exe
+    ou numa pasta 'ffmpeg' ao lado dele); se não houver, o pydub continua
+    usando o que estiver no PATH do sistema.
+
+    Devolve True se um ffmpeg utilizável foi encontrado."""
+
+    sufixo = ".exe" if os.name == "nt" else ""
+
+    if getattr(sys, "frozen", False):
+        bases = [getattr(sys, "_MEIPASS", ""), os.path.dirname(sys.executable)]
+    else:
+        bases = [os.path.dirname(os.path.abspath(__file__))]
+
+    for base in bases:
+        if not base:
+            continue
+
+        for pasta in (base, os.path.join(base, "ffmpeg")):
+            ffmpeg = os.path.join(pasta, "ffmpeg" + sufixo)
+            ffprobe = os.path.join(pasta, "ffprobe" + sufixo)
+
+            if os.path.isfile(ffmpeg):
+                # o pydub procura o ffprobe pelo PATH, então a pasta entra nele
+                os.environ["PATH"] = pasta + os.pathsep + os.environ.get("PATH", "")
+                AudioSegment.converter = ffmpeg
+                AudioSegment.ffmpeg = ffmpeg
+                if os.path.isfile(ffprobe):
+                    AudioSegment.ffprobe = ffprobe
+                return True
+
+    return shutil.which(AudioSegment.converter) is not None
+
+
+FFMPEG_OK = configurar_ffmpeg()
 
 # =========================
 # CONFIG
@@ -141,6 +179,23 @@ def invoke(action, **params):
     except requests.exceptions.ConnectionError:
         print("\nERRO: não consegui conectar ao AnkiConnect. O Anki está aberto?")
         sys.exit(1)
+
+
+def enviar_midia_ao_anki(nome_audio, caminho_audio):
+    """Envia o MP3 para a pasta de mídia do Anki (via AnkiConnect, em
+    base64 -- funciona também dentro do Docker/.exe, onde o Anki não
+    enxerga o caminho do arquivo). Devolve True se o Anki confirmou."""
+
+    with open(caminho_audio, "rb") as f:
+        audio_b64 = base64.b64encode(f.read()).decode("utf-8")
+
+    resp = invoke("storeMediaFile", filename=nome_audio, data=audio_b64)
+
+    if resp.get("error"):
+        print(f"Falha ao salvar mídia no Anki: {resp['error']}")
+        return False
+
+    return True
 
 
 def obter_campos_modelo(model_name):
@@ -1483,6 +1538,11 @@ async def gerar_audio_segmentado(segmentos, arquivo_final):
         try:
             audio_final += AudioSegment.from_file(caminho_temp, format="mp3")
             algum_audio_gerado = True
+        except Exception as e:
+            return False, (
+                "Não consegui processar o áudio do Cloze -- o ffmpeg "
+                f"está instalado? ({type(e).__name__}: {e})"
+            )
         finally:
             try:
                 os.remove(caminho_temp)
@@ -1492,11 +1552,17 @@ async def gerar_audio_segmentado(segmentos, arquivo_final):
     if not algum_audio_gerado:
         return False, "Nenhum segmento de áudio foi gerado"
 
-    audio_final.export(
-        arquivo_final,
-        format="mp3",
-        bitrate=CLOZE_EXPORT_BITRATE
-    )
+    try:
+        audio_final.export(
+            arquivo_final,
+            format="mp3",
+            bitrate=CLOZE_EXPORT_BITRATE
+        )
+    except Exception as e:
+        return False, (
+            "Não consegui exportar o áudio do Cloze -- o ffmpeg "
+            f"está instalado? ({type(e).__name__}: {e})"
+        )
 
     return True, None
 
@@ -1507,6 +1573,11 @@ async def gerar_audio_segmentado(segmentos, arquivo_final):
 def main():
 
     config = carregar_config()
+
+    if not FFMPEG_OK:
+        print("\nAVISO: ffmpeg não encontrado. Os áudios de cards comuns funcionam,")
+        print("mas os cards Cloze (que precisam juntar fala + pausa) vão falhar.")
+        print("Instale o ffmpeg e coloque-o no PATH, ou ao lado deste programa.\n")
 
     print("\n" + "=" * 60)
     print("ANKI TTS")
@@ -1867,6 +1938,12 @@ O que deseja fazer?
                     if campo_destino in note["fields"]:
                         campo_existente = note["fields"][campo_destino]["value"]
 
+                    # o MP3 está no cache local, mas isso não garante que o
+                    # Anki o tenha (envio anterior pode ter falhado, perfil
+                    # trocado, mídia apagada): reenvia (é idempotente)
+                    if not enviar_midia_ao_anki(nome_audio, caminho_audio):
+                        continue
+
                     if audio_tag not in campo_existente:
 
                         invoke(
@@ -1923,17 +2000,12 @@ O que deseja fazer?
 
             if sucesso:
 
-                with open(caminho_audio, "rb") as f:
-                    audio_b64 = base64.b64encode(f.read()).decode("utf-8")
-
-                resp = invoke("storeMediaFile", filename=nome_audio, data=audio_b64)
-                if resp.get("error"):
-                    print(f"Falha ao salvar mídia no Anki: {resp['error']}")
+                if not enviar_midia_ao_anki(nome_audio, caminho_audio):
                     continue
 
             else:
 
-                print("Falha Edge-TTS")
+                print("Falha ao gerar o áudio")
                 print(erro)
                 print("ERRO FINAL")
                 continue
@@ -1958,4 +2030,13 @@ O que deseja fazer?
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    finally:
+        # Ao abrir o .exe com dois cliques, a janela fecharia na hora e a
+        # pessoa não leria o resultado (nem os erros). Só no executável:
+        if getattr(sys, "frozen", False):
+            try:
+                input("\nPressione Enter para fechar...")
+            except (EOFError, KeyboardInterrupt):
+                pass
