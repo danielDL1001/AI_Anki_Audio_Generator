@@ -1,0 +1,10 @@
+services:
+  anki-audio-generator:
+    build: .
+    image: anki-audio-generator
+    container_name: anki-audio-generator
+    stdin_open: true
+    tty: true
+    environment:
+      ANKICONNECT_URL: http://host.docker.internal:8765
+    restart: "no"
