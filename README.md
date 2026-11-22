@@ -1,11 +1,13 @@
 > [!NOTE]
 > **AI-Generated Content**
 >
->  **Nota de Transparência:** A estrutura e o código deste repositório foram gerados com o auxílio de Inteligência Artificial (ex: ChatGPT, Claude, Copilot) e revisados manualmente.
+> **Nota de Transparência:** A estrutura e o código deste repositório foram gerados com o auxílio de Inteligência Artificial (ex: ChatGPT, Claude, Copilot) e revisados manualmente.
 
 # Anki-Audio-Generator
 
 Generate speech audio automatically for your Anki cards using Edge-TTS + AnkiConnect.
+
+Gera áudio de voz (Edge-TTS) para os seus cards do Anki e o insere nos campos certos pelo AnkiConnect. Entende fórmulas MathJax/LaTeX (lê "limite de f de x quando x tende a zero" em vez do código) e transforma o trecho escondido de um Cloze em uma pausa no áudio da pergunta.
 
 ---
 
@@ -19,29 +21,42 @@ O repositório é disponibilizado com o objetivo de compartilhar uma solução �
 
 A transparência sobre o uso de IA faz parte da filosofia deste projeto.
 
+---
+
 # 📦 Requisitos
 
 - Python 3.10+
-- Anki
-- Addon AnkiConnect
-- Requests
-- Edge-TTS
+- Anki (aberto durante a execução)
+- Add-on AnkiConnect
+- **ffmpeg** instalado no sistema (usado pelo `pydub` nos cards Cloze)
+- Bibliotecas Python: `requests`, `edge-tts`, `pydub` (já listadas em `requirements.txt`)
+- Conexão com a internet (o Edge-TTS gera a voz online)
 
 ---
 
 # 🔧 Instalação
 
 ```bash
-git clone https://github.com/danielDL1001/Anki-Audio-Generator.git
+git clone https://github.com/danielDL1001/AI_Anki_Audio_Generator.git
 
-cd Anki-Audio-Generator
+cd AI_Anki_Audio_Generator
 
 python -m venv .venv
 
-source .venv/bin/activate
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 
-pip install requests edge-tts playsound pygames
+pip install -r requirements.txt
 ```
+
+## Instalar o ffmpeg
+
+```text
+Linux (Debian/Ubuntu):  sudo apt install ffmpeg
+macOS (Homebrew):       brew install ffmpeg
+Windows:                winget install Gyan.FFmpeg   (ou baixe em ffmpeg.org e coloque no PATH)
+```
+
+Teste com `ffmpeg -version`.
 
 ---
 
@@ -69,7 +84,7 @@ Reinicie o Anki.
 
 O script NÃO gera áudio para todos os cards.
 
-Ele gera áudio SOMENTE para cards que possuem a tag:
+Ele gera áudio SOMENTE para notas que possuem a tag:
 
 ```text
 audio
@@ -81,63 +96,19 @@ audio
 
 ## 1. Abrir o navegador do Anki
 
-Clique em:
-
-```text
-Procurar
-```
-
-ou pressione:
-
-```text
-B
-```
-
----
+Clique em **Procurar** ou pressione `B`.
 
 ## 2. Selecionar os cards
 
-Selecione:
-
-- um card
-- vários cards
-- ou um deck inteiro
-
----
+Selecione um card, vários cards ou um deck inteiro.
 
 ## 3. Adicionar a tag
 
-Na barra superior:
+Na barra superior: `Notas → Adicionar etiquetas...` (ou `Ctrl + Shift + A`).
 
-```text
-Notas → Adicionar etiquetas...
-```
+Digite `audio` e clique em **OK**.
 
-ou use:
-
-```text
-Ctrl + Shift + A
-```
-
-Digite:
-
-```text
-audio
-```
-
-Clique em:
-
-```text
-OK
-```
-
-Pronto.
-
-Agora esses cards serão detectados automaticamente pelo script.
-
----
-
-# 🔎 Testar se a tag foi criada
+## 4. Conferir
 
 No navegador do Anki, pesquise:
 
@@ -145,408 +116,236 @@ No navegador do Anki, pesquise:
 tag:audio
 ```
 
-Se os cards aparecerem, está funcionando corretamente.
+Se os cards aparecerem, está funcionando.
 
 ---
 
-# 🧠 Criar os campos de áudio
+# 🧠 Tipos de nota e campos de áudio
 
-Seu modelo de card precisa ter os campos:
+O script funciona com **tipos de nota** (note types) e, para cada um, uma lista de campos: de qual campo vem o **texto** e em qual campo o **áudio** é gravado.
 
-```text
-AudioFrente
-AudioVerso
-```
+Na primeira execução ele já conhece dois tipos de nota:
 
-Esses campos são usados para separar os áudios da frente e do verso do card.
+| Tipo de nota  | Campo de texto | Campo de áudio (destino) | O que é narrado                                      |
+| ------------- | -------------- | ------------------------ | ---------------------------------------------------- |
+| `Basic_audio` | `Front`        | `FrontAudio`             | O texto do campo                                     |
+| `Basic_audio` | `Back`         | `BackAudio`              | O texto do campo                                     |
+| `Basic_audio` | `Example`      | `ExampleAudio`           | O texto do campo                                     |
+| `Cloze_audio` | `Text`         | `TextAudio`              | A pergunta; o trecho `{{c1::...}}` vira uma **pausa** |
+| `Cloze_audio` | `Text`         | `ExtraAudio`             | O conteúdo escondido no Cloze + o campo `Extra`      |
 
-Isso evita:
+Esses tipos de nota precisam existir no Anki com esses nomes. **Você não precisa criar os campos de áudio à mão**: o script cria os campos de destino automaticamente quando eles não existem.
 
-- áudio tocando fora de ordem
-- dois áudios tocando juntos
-- áudio da frente tocando no verso
-- problemas de autoplay no Anki
-
----
-
-# ➕ Como adicionar os campos
-
-Abra qualquer card.
-
-Depois vá em:
-
-```text
-Editar → Cards... → Fields... → Add
-```
-
-Crie os dois campos:
-
-## Campo 1
-
-```text
-AudioFrente
-```
-
-## Campo 2
-
-```text
-AudioVerso
-```
-
-Clique em:
-
-```text
-OK
-```
+Para usar outros tipos de nota ou outros nomes de campo, use o menu de configuração (veja [Executar](#-executar)). A configuração fica salva em `~/anki_tts_config.json`.
 
 ---
 
 # 🎴 Mostrar os áudios no card
 
-O áudio NÃO irá tocar automaticamente se o template do card não possuir:
+O áudio NÃO toca se o template do card não tiver o campo de áudio. Em **Editar → Cards...**, adicione os campos nos templates.
+
+## `Basic_audio` (exemplo)
+
+**Frente**
 
 ```html
-{{AudioFrente}}
+{{Front}}
+
+{{FrontAudio}}
 ```
 
-e
-
-```html
-{{AudioVerso}}
-```
-
-Você PRECISA adicionar isso no template do cartão.
-
----
-
-# ➕ Como adicionar `{{AudioFrente}}` e `{{AudioVerso}}`
-
-Abra qualquer card.
-
-Depois vá em:
-
-```text
-Editar → Cards...
-```
-
-Você verá algo parecido com:
-
-## Frente
-
-```html
-{{Frente}}
-```
-
-## Verso
+**Verso**
 
 ```html
 {{FrontSide}}
 
 <hr id=answer>
 
-{{Verso}}
+{{Back}}
+
+{{BackAudio}}
+
+{{Example}}
+
+{{ExampleAudio}}
 ```
 
----
+O `{{FrontSide}}` mostra o conteúdo da frente no verso sem tocar de novo o áudio da frente. Assim, o áudio da frente toca só na frente e o do verso só no verso.
 
-# ✅ Template recomendado
+## `Cloze_audio` (exemplo)
 
-## Frente
+**Frente**
 
 ```html
-{{Frente}}
+{{cloze:Text}}
 
-{{AudioFrente}}
+{{TextAudio}}
 ```
 
----
-
-## Verso
+**Verso**
 
 ```html
-{{FrontSide}}
+{{cloze:Text}}
 
-<hr id=answer>
+<br>
 
-{{Verso}}
+{{Extra}}
 
-{{AudioVerso}}
+{{ExtraAudio}}
 ```
 
 ---
-
-# ✅ Resultado do card
-
-Quando o card abrir no Anki:
-
-- o áudio da frente tocará apenas na frente
-- o áudio do verso tocará apenas no verso
-- o autoplay funcionará corretamente
-- o script adicionará automaticamente:
-
-```text
-[sound:arquivo.mp3]
-```
-
-nos campos corretos:
-
-```text
-AudioFrente
-AudioVerso
-```
 
 # ▶ Executar
 
-Abra o Anki primeiro.
-
-Depois rode:
+Abra o Anki primeiro. Depois rode:
 
 ```bash
-python3 anki_edge_tts.py
+python main.py
 ```
+
+O menu inicial oferece:
+
+```text
+1 - Gerar áudios
+2 - Configurar tipos de nota / campos (adicionar, editar ou remover)
+```
+
+## Gerar áudios
+
+1. O script procura as notas com a tag `audio`.
+2. Para cada tipo de nota encontrado, mostra os campos de áudio configurados e você escolhe quais gerar (números separados por vírgula, ou `todos`).
+3. Se algum campo de áudio já estiver preenchido, ele pergunta:
+   - **1 - Ignorar áudios existentes**: pula os campos que já têm `[sound:...]`.
+   - **2 - Refazer todos os áudios**: gera de novo e sobrescreve.
+4. Cada áudio é enviado ao Anki pelo AnkiConnect e o campo recebe `[sound:arquivo.mp3]`.
+
+Os arquivos são nomeados `<id da nota>_<campo>.mp3`, por exemplo `123456_frontaudio.mp3`.
+
+## Configurar tipos de nota / campos
+
+O menu `2` lista os tipos de nota do seu Anki e mostra os campos reais como lista numerada. Você escolhe o campo de texto, informa o campo de destino do áudio (se ele não existir, o script cria) e indica se o texto usa Cloze. Nada precisa ser editado no código.
 
 ---
 
-# 🎛 Escolher o tipo de áudio
+# 🧮 Fórmulas MathJax/LaTeX
 
-Quando o script iniciar, ele perguntará qual campo deve virar áudio:
+Antes de enviar o texto ao Edge-TTS, fórmulas como `\( ... \)` e `\[ ... \]` (e as variantes antigas `[$] ... [/$]`) viram uma frase em português: limites, frações, raízes, potências, integrais, somatórios, derivadas e os símbolos mais comuns.
 
-```text
-1 - Frente
-2 - Verso
-3 - Frente e Verso
+A conversão só afeta o texto enviado à voz. O campo original do card **não é alterado**, e a fórmula continua renderizada normalmente.
+
+Para rodar os testes da conversão:
+
+```bash
+python main.py --testar-latex
 ```
 
-Exemplo:
-
-```text
-O que deseja gerar?
-
-1 - Frente
-2 - Verso
-3 - Frente e Verso
-
-Escolha:
-```
-
-## Opções
-
-### Frente
-Gera áudio apenas do campo:
-
-```text
-Frente
-```
-
-### Verso
-Gera áudio apenas do campo:
-
-```text
-Verso
-```
-
-### Frente e Verso
-Gera áudio para os dois campos.
-
-Exemplo de arquivos:
-
-```text
-123456_Frente.mp3
-123456_Verso.mp3
-```
-
-Os dois áudios serão adicionados automaticamente no campo:
-
-```text
-Audio
-```
-
----
-
-# ✅ Resultado final
-
-O script irá:
-
-- encontrar cards com tag `audio`
-- ler o campo `Frente`, `Verso` ou `Frente e Verso`
-- gerar voz automaticamente
-- salvar os áudios no Anki
-- adicionar automaticamente:
-
-```text
-[sound:arquivo.mp3]
-```
-
-- tocar automaticamente durante revisão
+A conversão cobre os casos comuns (foco em Cálculo I). Expressões muito incomuns podem não virar uma frase perfeita.
 
 ---
 
 # 🎤 Vozes
 
-Exemplo:
+A voz padrão é `pt-BR-FranciscaNeural`. Para trocar sem editar o código, use a variável de ambiente `VOICE`:
 
-```python
-VOICE = "pt-BR-FranciscaNeural"
+```bash
+# Linux / macOS
+VOICE=en-US-JennyNeural python main.py
+
+# Windows (PowerShell)
+$env:VOICE = "en-US-JennyNeural"; python main.py
+
+# Windows (cmd)
+set VOICE=en-US-JennyNeural && python main.py
 ```
 
 O Edge-TTS possui várias vozes naturais em diferentes idiomas.
 
----
-
 ## 🇧🇷 Português (Brasil)
 
-### Vozes femininas
-
-- `pt-BR-FranciscaNeural`
-- `pt-BR-BrendaNeural`
-
-### Vozes masculinas
-
-- `pt-BR-AntonioNeural`
-- `pt-BR-DonatoNeural`
-
----
+- Femininas: `pt-BR-FranciscaNeural`, `pt-BR-BrendaNeural`
+- Masculinas: `pt-BR-AntonioNeural`, `pt-BR-DonatoNeural`
 
 ## 🇺🇸 English
 
-### Vozes femininas
-
-- `en-US-JennyNeural`
-- `en-US-AriaNeural`
-- `en-US-AnaNeural`
-- `en-GB-SoniaNeural`
-
-### Vozes masculinas
-
-- `en-US-GuyNeural`
-- `en-US-DavisNeural`
-- `en-GB-RyanNeural`
-
----
+- Femininas: `en-US-JennyNeural`, `en-US-AriaNeural`, `en-US-AnaNeural`, `en-GB-SoniaNeural`
+- Masculinas: `en-US-GuyNeural`, `en-US-DavisNeural`, `en-GB-RyanNeural`
 
 ## 🇯🇵 Japonês
 
-### Vozes femininas
-
-- `ja-JP-NanamiNeural`
-- `ja-JP-AoiNeural`
-
-### Vozes masculinas
-
-- `ja-JP-KeitaNeural`
-- `ja-JP-DaichiNeural`
-
----
+- Femininas: `ja-JP-NanamiNeural`, `ja-JP-AoiNeural`
+- Masculinas: `ja-JP-KeitaNeural`, `ja-JP-DaichiNeural`
 
 ## 🇪🇸 Espanhol
 
-### Vozes femininas
+- Femininas: `es-ES-ElviraNeural`, `es-MX-DaliaNeural`
+- Masculinas: `es-ES-AlvaroNeural`, `es-MX-JorgeNeural`
 
-- `es-ES-ElviraNeural`
-- `es-MX-DaliaNeural`
-
-### Vozes masculinas
-
-- `es-ES-AlvaroNeural`
-- `es-MX-JorgeNeural`
-
----
-
-# 🔄 Como trocar a voz
-
-Abra o arquivo:
-
-```text
-anki_edge_tts.py
-```
-
-Procure por:
-
-```python
-VOICE = "pt-BR-FranciscaNeural"
-```
-
-E substitua pela voz desejada.
-
-Exemplo:
-
-```python
-VOICE = "ja-JP-NanamiNeural"
-```
-
-ou:
-
-```python
-VOICE = "en-US-JennyNeural"
-```
-
----
-
-# 🧪 Testar vozes disponíveis
-
-Você também pode listar TODAS as vozes disponíveis do Edge-TTS com:
+## 🧪 Listar todas as vozes
 
 ```bash
 edge-tts --list-voices
 ```
 
-Isso mostrará:
+Mostra idioma, nome, país e gênero de cada voz.
 
-- idioma
-- nome da voz
-- país
-- gênero
+## 💡 Recomendações
+
+| Uso                | Voz                     |
+| ------------------ | ----------------------- |
+| Cards em português | `pt-BR-FranciscaNeural` |
+| Inglês             | `en-US-JennyNeural`     |
+| Japonês            | `ja-JP-NanamiNeural`    |
+| Espanhol           | `es-ES-ElviraNeural`    |
 
 ---
 
-# 💡 Recomendações
+# 🐳 Docker
 
-## Para cards normais
+Também dá para rodar dentro de um container (a imagem já inclui o ffmpeg). O Anki continua rodando **no seu computador**, e o container conversa com o AnkiConnect pela rede.
 
-```text
-pt-BR-FranciscaNeural
+```bash
+docker compose build
+
+docker compose run --rm anki-audio-generator
 ```
 
-Natural e confortável para revisões longas.
+Use `run` (e não `up`), porque o script é interativo e precisa do seu teclado.
+
+O `compose.yaml` já define:
+
+| Variável         | Valor padrão                         | Função                                       |
+| ---------------- | ------------------------------------ | -------------------------------------------- |
+| `ANKICONNECT_URL` | `http://host.docker.internal:8765`   | Onde está o AnkiConnect (no seu computador)  |
+| `CONFIG_FILE`    | `/data/anki_tts_config.json`         | Config salva num volume, não se perde ao sair |
+| `VOICE`          | `pt-BR-FranciscaNeural`              | Voz do Edge-TTS                              |
+
+## Liberar o acesso do container ao AnkiConnect
+
+Por padrão, o AnkiConnect só aceita conexões do próprio computador (`127.0.0.1`).
+
+- **Windows / macOS (Docker Desktop):** normalmente funciona sem mudar nada.
+- **Linux:** em `Ferramentas → Add-ons → AnkiConnect → Config`, troque `webBindAddress` para `0.0.0.0` (ou para o IP da ponte do Docker, geralmente `172.17.0.1`) e reinicie o Anki.
+
+> ⚠ O AnkiConnect não tem senha por padrão. Com `0.0.0.0`, qualquer dispositivo da sua rede local consegue acessá-lo. Prefira o IP da ponte do Docker ou bloqueie a porta `8765` no firewall para a rede externa.
 
 ---
 
-## Para inglês
+# 📁 Onde ficam os áudios
 
-```text
-en-US-JennyNeural
-```
+Os áudios são enviados ao Anki pelo AnkiConnect (`storeMediaFile`) e vão para a pasta `collection.media` do seu perfil, onde o Anki guarda todas as mídias. Isso vale também no Docker.
 
-Excelente pronúncia e clareza.
+Uma cópia temporária fica em `~/anki_tts_temp` (dentro do container, no caso do Docker).
 
 ---
 
-## Para japonês
+# 🛠 Solução de problemas
 
-```text
-ja-JP-NanamiNeural
-```
-
-Muito usada para estudo de japonês e anime-style listening.
-
----
-
-## Para espanhol
-
-```text
-es-ES-ElviraNeural
-```
-
-Boa dicção e ritmo equilibrado.
-
----
-
-# 📁 Local dos áudios
-
-Os arquivos são salvos automaticamente em:
-
-```text
-~/.local/share/Anki2/User 1/collection.media
-```
-
----
+| Problema                                     | O que fazer                                                                                                                  |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `não consegui conectar ao AnkiConnect`       | Abra o Anki, confirme que o AnkiConnect está instalado e (no Docker/Linux) revise o `webBindAddress`.                         |
+| `Nenhum card encontrado`                     | Nenhuma nota tem a tag `audio`. Confira com `tag:audio` no navegador do Anki.                                                 |
+| `a biblioteca 'pydub' não está instalada`    | Rode `pip install -r requirements.txt` e instale o ffmpeg.                                                                    |
+| Falha ao gerar o áudio (Edge-TTS)            | Confira a internet e atualize a biblioteca: `pip install -U edge-tts`. O serviço da Microsoft muda de vez em quando.          |
+| Campo não atualiza                           | Feche o Navegador do Anki (a janela "Procurar") antes de rodar. O AnkiConnect pode falhar ao editar uma nota aberta nele.     |
+| O áudio não toca no card                     | Confira se o template tem `{{FrontAudio}}`, `{{BackAudio}}` etc., e se o autoplay do Anki está ativo.                          |

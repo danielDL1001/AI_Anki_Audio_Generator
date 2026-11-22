@@ -4,7 +4,7 @@ import os
 import re
 import json
 import html
-import subprocess
+import base64
 import sys
 
 try:
@@ -13,13 +13,21 @@ except ImportError:
     print("\nERRO: a biblioteca 'pydub' não está instalada.")
     print("Instale com: pip install pydub")
     print("(também é necessário ter o 'ffmpeg' instalado no sistema)\n")
-    exit()
+    sys.exit(1)
+
+try:
+    import edge_tts
+except ImportError:
+    print("\nERRO: a biblioteca 'edge-tts' não está instalada.")
+    print("Instale com: pip install edge-tts\n")
+    sys.exit(1)
 
 # =========================
 # CONFIG
 # =========================
 
-VOICE = "pt-BR-FranciscaNeural"
+# Pode ser trocada sem editar o código: VOICE=en-US-JennyNeural python main.py
+VOICE = os.environ.get("VOICE", "pt-BR-FranciscaNeural")
 
 # Duração da pausa (silêncio) que substitui o {{c1::...}} no áudio da
 # pergunta, em milissegundos. 1000 = 1 segundo.
@@ -123,17 +131,16 @@ def salvar_config(config):
 ANKICONNECT_URL = os.environ.get("ANKICONNECT_URL", "http://localhost:8765")
 
 def invoke(action, **params):
-
-    resposta = requests.post(
-        ANKICONNECT_URL,          # <- era "http://localhost:8765"
-        json={
-            "action": action,
-            "version": 6,
-            "params": params
-        }
-    )
-
-    return resposta.json()
+    try:
+        resposta = requests.post(
+            ANKICONNECT_URL,
+            json={"action": action, "version": 6, "params": params},
+            timeout=30,
+        )
+        return resposta.json()
+    except requests.exceptions.ConnectionError:
+        print("\nERRO: não consegui conectar ao AnkiConnect. O Anki está aberto?")
+        sys.exit(1)
 
 
 def obter_campos_modelo(model_name):
@@ -482,7 +489,7 @@ NUMEROS_EXTENSO = {
     "5": "cinco", "6": "seis", "7": "sete", "8": "oito", "9": "nove",
     "10": "dez", "11": "onze", "12": "doze", "13": "treze", "14": "catorze",
     "15": "quinze", "16": "dezesseis", "17": "dezessete", "18": "dezoito",
-    "19": "dezenove", "l": "vinte",
+    "19": "dezenove", "20": "vinte",
 }
 
 # Funções/comandos "de um argumento só" que são lidos com o próprio nome
@@ -1344,23 +1351,28 @@ def limpar_texto(texto):
 # =========================
 
 async def gerar_audio(texto, arquivo):
+    """Gera `arquivo` (MP3) com o Edge-TTS usando a API Python.
 
-    processo = await asyncio.create_subprocess_exec(
-        "edge-tts",
-        "--voice", VOICE,
-        "--text", texto,
-        "--write-media", arquivo,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE
-    )
+    Mantém o mesmo formato de retorno de antes -- (código, stdout, stderr)
+    com código 0 = sucesso -- para os chamadores não precisarem mudar.
+    Usar a API (e não o comando `edge-tts` via subprocesso) elimina a
+    dependência do executável estar no PATH, o que também faz o script
+    funcionar dentro do Docker e no .exe gerado pelo PyInstaller.
+    """
 
-    stdout, stderr = await processo.communicate()
+    try:
+        await edge_tts.Communicate(texto, VOICE).save(arquivo)
+        return 0, "", ""
 
-    return (
-        processo.returncode,
-        stdout.decode(),
-        stderr.decode()
-    )
+    except Exception as e:
+        # não deixa um arquivo parcial para trás (ele seria reaproveitado
+        # numa próxima execução como se fosse um áudio válido)
+        try:
+            os.remove(arquivo)
+        except OSError:
+            pass
+
+        return 1, "", f"{type(e).__name__}: {e}"
 
 async def gerar_audio_unico(texto, arquivo):
     """
@@ -1492,61 +1504,66 @@ async def gerar_audio_segmentado(segmentos, arquivo_final):
 # MENU INICIAL
 # =========================
 
-config = carregar_config()
+def main():
 
-print("\n" + "=" * 60)
-print("ANKI TTS")
-print("=" * 60)
+    config = carregar_config()
 
-print("""
+    print("\n" + "=" * 60)
+    print("ANKI TTS")
+    print("=" * 60)
+
+    print("""
 1 - Gerar áudios
 2 - Configurar tipos de nota / campos (adicionar, editar ou remover)
 """)
 
-opcao_inicial = input("Escolha: ").strip()
+    opcao_inicial = input("Escolha: ").strip()
 
-if opcao_inicial == "2":
+    if opcao_inicial == "2":
 
-    tipos_disponiveis = invoke("modelNames").get("result") or []
+        tipos_disponiveis = invoke("modelNames").get("result") or []
 
-    if not tipos_disponiveis:
-        print("Não foi possível listar os tipos de nota do Anki (AnkiConnect está aberto?).")
-        exit()
+        if not tipos_disponiveis:
+            print("Não foi possível listar os tipos de nota do Anki (AnkiConnect está aberto?).")
+            sys.exit(1)
 
-    print("\nTipos de nota disponíveis no Anki:")
-    model_name = escolher_da_lista(tipos_disponiveis, "Qual tipo de nota deseja configurar? ")
+        print("\nTipos de nota disponíveis no Anki:")
+        model_name = escolher_da_lista(tipos_disponiveis, "Qual tipo de nota deseja configurar? ")
 
-    if model_name:
-        configurar_note_type_interativamente(model_name, config)
+        if model_name:
+            configurar_note_type_interativamente(model_name, config)
 
-    print("\nConfiguração salva. Rode o script novamente para gerar os áudios.")
-    exit()
+        print("\nConfiguração salva. Rode o script novamente para gerar os áudios.")
+        sys.exit(0)
 
-elif opcao_inicial != "1":
-    print("Opção inválida.")
-    exit()
+    elif opcao_inicial != "1":
+        print("Opção inválida.")
+        sys.exit(1)
 
-# =========================
-# PEGAR NOTES
-# =========================
+    # =========================
+    # PEGAR NOTES
+    # =========================
 
-notes = invoke(
-    "findNotes",
-    query="tag:audio"
-)["result"]
+    notes = invoke(
+        "findNotes",
+        query="tag:audio"
+    ).get("result") or []
 
-infos = invoke(
-    "notesInfo",
-    notes=notes
-)["result"]
+    infos = []
 
-if len(infos) == 0:
+    if notes:
+        infos = invoke(
+            "notesInfo",
+            notes=notes
+        ).get("result") or []
 
-    print("\n" + "=" * 60)
-    print("ERRO: Nenhum card encontrado.")
-    print("=" * 60)
+    if len(infos) == 0:
 
-    print("""
+        print("\n" + "=" * 60)
+        print("ERRO: Nenhum card encontrado.")
+        print("=" * 60)
+
+        print("""
 O script procura SOMENTE cards com a tag:
 
 audio
@@ -1566,370 +1583,379 @@ audio
 tag:audio
 """)
 
-    exit()
+        sys.exit(1)
 
-# =========================
-# AGRUPAR POR TIPO DE NOTA E ESCOLHER CAMPOS
-# =========================
-#
-# Para cada tipo de nota encontrado entre as notas marcadas, este bloco:
-# 1. Garante que existe uma configuração (perguntando na hora, se não
-#    houver nenhuma ainda, com os campos reais lidos do Anki).
-# 2. Mostra os campos já configurados como um menu numerado
-#    (1.(campo1), 2.(campo2), n.(campoN)) e deixa escolher quais gerar
-#    agora, sem precisar editar nada no código.
+    # =========================
+    # AGRUPAR POR TIPO DE NOTA E ESCOLHER CAMPOS
+    # =========================
+    #
+    # Para cada tipo de nota encontrado entre as notas marcadas, este bloco:
+    # 1. Garante que existe uma configuração (perguntando na hora, se não
+    #    houver nenhuma ainda, com os campos reais lidos do Anki).
+    # 2. Mostra os campos já configurados como um menu numerado
+    #    (1.(campo1), 2.(campo2), n.(campoN)) e deixa escolher quais gerar
+    #    agora, sem precisar editar nada no código.
 
-notas_por_modelo = {}
+    notas_por_modelo = {}
 
-for note in infos:
-    notas_por_modelo.setdefault(note["modelName"], []).append(note)
+    for note in infos:
+        notas_por_modelo.setdefault(note["modelName"], []).append(note)
 
-campos_por_modelo = {}
-infos_processaveis = []
+    campos_por_modelo = {}
+    infos_processaveis = []
 
-for model_name, notas in notas_por_modelo.items():
+    for model_name, notas in notas_por_modelo.items():
 
-    if model_name not in config or not config[model_name].get("campos"):
+        if model_name not in config or not config[model_name].get("campos"):
 
-        print(f"\nTipo de nota '{model_name}' ainda não tem campos de áudio configurados.")
+            print(f"\nTipo de nota '{model_name}' ainda não tem campos de áudio configurados.")
 
-        if input("Deseja configurar agora? (s/n): ").strip().lower() == "s":
-            configurar_note_type_interativamente(model_name, config)
-        else:
-            print(f"Ignorando {len(notas)} nota(s) do tipo '{model_name}'.")
+            if input("Deseja configurar agora? (s/n): ").strip().lower() == "s":
+                configurar_note_type_interativamente(model_name, config)
+            else:
+                print(f"Ignorando {len(notas)} nota(s) do tipo '{model_name}'.")
+                continue
+
+        campos_config = config.get(model_name, {}).get("campos", [])
+
+        if not campos_config:
+            print(f"Tipo de nota '{model_name}' sem campos configurados. Ignorando {len(notas)} nota(s).")
             continue
 
-    campos_config = config.get(model_name, {}).get("campos", [])
+        amostra_fields = notas[0]["fields"]
 
-    if not campos_config:
-        print(f"Tipo de nota '{model_name}' sem campos configurados. Ignorando {len(notas)} nota(s).")
-        continue
+        campos_escolhidos = escolher_campos_para_gerar(model_name, campos_config, amostra_fields)
 
-    amostra_fields = notas[0]["fields"]
-
-    campos_escolhidos = escolher_campos_para_gerar(model_name, campos_config, amostra_fields)
-
-    if not campos_escolhidos:
-        print(f"Nenhum campo válido/selecionado para '{model_name}'. Ignorando {len(notas)} nota(s).")
-        continue
-
-    # Garante que os campos de destino existem de fato no tipo de nota
-    # no Anki (cria automaticamente se faltar).
-    campos_validos = [
-        campo for campo in campos_escolhidos
-        if garantir_campo_no_modelo(model_name, campo["destino"])
-    ]
-
-    if not campos_validos:
-        print(f"Nenhum campo de destino pôde ser criado para '{model_name}'. Ignorando {len(notas)} nota(s).")
-        continue
-
-    campos_por_modelo[model_name] = campos_validos
-    infos_processaveis.extend(notas)
-
-if not infos_processaveis:
-    print("\nNenhuma nota processável encontrada. Encerrando.")
-    exit()
-
-TOTAL = len(infos_processaveis)
-
-print(f"\nTOTAL DE CARDS PROCESSÁVEIS: {TOTAL}\n")
-
-# =========================
-# VERIFICAR ÁUDIOS EXISTENTES
-# =========================
-
-audios_existentes = False
-
-for note in infos_processaveis:
-
-    campos = campos_por_modelo[note["modelName"]]
-
-    for campo in campos:
-
-        campo_destino = campo["destino"]
-
-        if campo_destino not in note["fields"]:
+        if not campos_escolhidos:
+            print(f"Nenhum campo válido/selecionado para '{model_name}'. Ignorando {len(notas)} nota(s).")
             continue
 
-        valor = note["fields"][campo_destino]["value"].strip()
+        # Garante que os campos de destino existem de fato no tipo de nota
+        # no Anki (cria automaticamente se faltar).
+        campos_validos = [
+            campo for campo in campos_escolhidos
+            if garantir_campo_no_modelo(model_name, campo["destino"])
+        ]
 
-        if valor:
-            audios_existentes = True
+        if not campos_validos:
+            print(f"Nenhum campo de destino pôde ser criado para '{model_name}'. Ignorando {len(notas)} nota(s).")
+            continue
+
+        campos_por_modelo[model_name] = campos_validos
+        infos_processaveis.extend(notas)
+
+    if not infos_processaveis:
+        print("\nNenhuma nota processável encontrada. Encerrando.")
+        sys.exit(0)
+
+    TOTAL = len(infos_processaveis)
+
+    print(f"\nTOTAL DE CARDS PROCESSÁVEIS: {TOTAL}\n")
+
+    # =========================
+    # VERIFICAR ÁUDIOS EXISTENTES
+    # =========================
+
+    audios_existentes = False
+
+    for note in infos_processaveis:
+
+        campos = campos_por_modelo[note["modelName"]]
+
+        for campo in campos:
+
+            campo_destino = campo["destino"]
+
+            if campo_destino not in note["fields"]:
+                continue
+
+            valor = note["fields"][campo_destino]["value"].strip()
+
+            if valor:
+                audios_existentes = True
+                break
+
+        if audios_existentes:
             break
 
+    # =========================
+    # PERGUNTAR REFAZER
+    # =========================
+
+    REFAZER_AUDIOS = False
+
     if audios_existentes:
-        break
 
-# =========================
-# PERGUNTAR REFAZER
-# =========================
+        print("=" * 60)
+        print("Áudios existentes detectados!")
+        print("=" * 60)
 
-REFAZER_AUDIOS = False
-
-if audios_existentes:
-
-    print("=" * 60)
-    print("Áudios existentes detectados!")
-    print("=" * 60)
-
-    print("""
+        print("""
 O que deseja fazer?
 
 1 - Ignorar áudios existentes
 2 - Refazer todos os áudios
 """)
 
-    escolha_refazer = input("Escolha: ").strip()
+        escolha_refazer = input("Escolha: ").strip()
 
-    if escolha_refazer == "2":
-        REFAZER_AUDIOS = True
+        if escolha_refazer == "2":
+            REFAZER_AUDIOS = True
 
-# =========================
-# LOOP PRINCIPAL
-# =========================
+    # =========================
+    # LOOP PRINCIPAL
+    # =========================
 
-for i, note in enumerate(infos_processaveis, start=1):
+    for i, note in enumerate(infos_processaveis, start=1):
 
-    note_id = note["noteId"]
-    model_name = note["modelName"]
-    campos = campos_por_modelo[model_name]
+        note_id = note["noteId"]
+        model_name = note["modelName"]
+        campos = campos_por_modelo[model_name]
 
-    print("=" * 60)
-    print(f"[{i}/{TOTAL}] ({model_name})")
+        print("=" * 60)
+        print(f"[{i}/{TOTAL}] ({model_name})")
 
-    for campo in campos:
+        for campo in campos:
 
-        campo_destino = campo["destino"]
-        papel = campo["papel"]
-
-        # -------------------------
-        # MONTAR O TEXTO A SER FALADO
-        # -------------------------
-
-        if papel == "normal":
-
-            campo_origem = campo["origem"]
-
-            if campo_origem not in note["fields"]:
-                print(f"Sem campo '{campo_origem}'")
-                continue
-
-            # Pipeline: texto original -> MathJax/LaTeX para fala ->
-            # limpeza de HTML/etc -> Edge-TTS. Isso só afeta a string
-            # local usada no áudio; note["fields"] nunca é alterado aqui.
-            texto = limpar_texto(mathjax_para_fala(note["fields"][campo_origem]["value"]))
-
-            segmentos = [("texto", texto)]
-
-        elif papel == "cloze_pergunta":
-
-            campo_texto = campo["origem"]
-
-            if campo_texto not in note["fields"]:
-                print(f"Sem campo '{campo_texto}'")
-                continue
-
-            # Converte MathJax/LaTeX -> fala ANTES de separar os
-            # marcadores {{cN::...}}: assim, fórmulas tanto fora quanto
-            # dentro de um cloze (ex.: {{c1::\(x^2\)}}) já chegam
-            # convertidas em texto falável quando o cloze for
-            # extraído/removido logo abaixo.
-            valor_texto = mathjax_para_fala(note["fields"][campo_texto]["value"])
-
-            # Divide a frase em pedaços de fala, marcando com uma
-            # "pausa" cada trecho onde havia um {{cN::...}}. A pausa
-            # vira silêncio real no áudio (não revela a resposta).
-            segmentos = []
-
-            for tipo_seg, conteudo_seg in dividir_em_segmentos_cloze(valor_texto):
-
-                if tipo_seg == "pausa":
-                    segmentos.append(("pausa", None))
-                else:
-                    texto_limpo = limpar_texto(conteudo_seg)
-                    if texto_limpo:
-                        segmentos.append(("texto", texto_limpo))
-
-        elif papel == "cloze_resposta":
-
-            campo_texto = campo["origem"]
-
-            if campo_texto not in note["fields"]:
-                print(f"Sem campo '{campo_texto}'")
-                continue
-
-            valor_texto = mathjax_para_fala(note["fields"][campo_texto]["value"])
-
-            # Lê o conteúdo que estava escondido em {{cN::conteudo}},
-            # limpando cada trecho (remove tags HTML etc.) antes de juntar
-            respostas = extrair_respostas_cloze(valor_texto)
-            respostas_limpas = [limpar_texto(r) for r in respostas]
-            texto_respostas = ", ".join([r for r in respostas_limpas if r])
-
-            # E soma o que estiver digitado manualmente no campo extra
-            # (configurável, ex.: "Extra"), se houver um configurado
-            texto_extra = ""
-            campo_extra = campo.get("extra_origem")
-
-            if campo_extra and campo_extra in note["fields"]:
-                valor_extra = note["fields"][campo_extra]["value"]
-                texto_extra = limpar_texto(mathjax_para_fala(valor_extra))
-
-            partes = [p for p in [texto_respostas, texto_extra] if p]
-            texto = ". ".join(partes)
-
-            segmentos = [("texto", texto)]
-
-        else:
-            print(f"Papel de campo desconhecido: {papel}")
-            continue
-
-        # Texto "achatado" (só os pedaços falados, sem marcar as pausas),
-        # usado para checagem de vazio/validação e para o preview no console
-        texto = " ".join(
-            conteudo for tipo_seg, conteudo in segmentos if tipo_seg == "texto"
-        ).strip()
-
-        if not texto:
-            print(f"{campo_destino} vazio")
-            continue
-
-        # =========================
-        # VALIDAR TEXTO FALÁVEL
-        # =========================
-
-        texto_validacao = re.sub(
-            r"[^\w\sÀ-ÿ]",
-            "",
-            texto
-        )
-
-        if not texto_validacao.strip():
-            print(f"{campo_destino} contém apenas símbolos inválidos")
-            continue
-
-        # label usado no nome do arquivo (mantém compatibilidade com
-        # arquivos antigos do Basic_audio: 123456_Frente.mp3 etc.)
-        label = campo_destino[5:] if campo_destino.startswith("Audio") else campo_destino
-
-        nome_audio = f"{note_id}_{label.lower()}.mp3"
-
-        caminho_audio = os.path.join(
-            TEMP_DIR,
-            nome_audio
-        )
-
-        audio_tag = f"[sound:{nome_audio}]"
-
-        # -------------------------
-        # SE JÁ EXISTE
-        # -------------------------
-
-        if (
-            os.path.exists(caminho_audio)
-            and os.path.getsize(caminho_audio) > 0
-        ):
+            campo_destino = campo["destino"]
+            papel = campo["papel"]
 
             # -------------------------
-            # IGNORAR ÁUDIO EXISTENTE
+            # MONTAR O TEXTO A SER FALADO
             # -------------------------
 
-            if not REFAZER_AUDIOS:
+            if papel == "normal":
 
-                print(f"Áudio já existe -> {nome_audio}")
+                campo_origem = campo["origem"]
 
-                campo_existente = ""
+                if campo_origem not in note["fields"]:
+                    print(f"Sem campo '{campo_origem}'")
+                    continue
 
-                if campo_destino in note["fields"]:
-                    campo_existente = note["fields"][campo_destino]["value"]
+                # Pipeline: texto original -> MathJax/LaTeX para fala ->
+                # limpeza de HTML/etc -> Edge-TTS. Isso só afeta a string
+                # local usada no áudio; note["fields"] nunca é alterado aqui.
+                texto = limpar_texto(mathjax_para_fala(note["fields"][campo_origem]["value"]))
 
-                if audio_tag not in campo_existente:
+                segmentos = [("texto", texto)]
 
-                    invoke(
-                        "updateNoteFields",
-                        note={
-                            "id": note_id,
-                            "fields": {
-                                campo_destino: audio_tag
+            elif papel == "cloze_pergunta":
+
+                campo_texto = campo["origem"]
+
+                if campo_texto not in note["fields"]:
+                    print(f"Sem campo '{campo_texto}'")
+                    continue
+
+                # Converte MathJax/LaTeX -> fala ANTES de separar os
+                # marcadores {{cN::...}}: assim, fórmulas tanto fora quanto
+                # dentro de um cloze (ex.: {{c1::\(x^2\)}}) já chegam
+                # convertidas em texto falável quando o cloze for
+                # extraído/removido logo abaixo.
+                valor_texto = mathjax_para_fala(note["fields"][campo_texto]["value"])
+
+                # Divide a frase em pedaços de fala, marcando com uma
+                # "pausa" cada trecho onde havia um {{cN::...}}. A pausa
+                # vira silêncio real no áudio (não revela a resposta).
+                segmentos = []
+
+                for tipo_seg, conteudo_seg in dividir_em_segmentos_cloze(valor_texto):
+
+                    if tipo_seg == "pausa":
+                        segmentos.append(("pausa", None))
+                    else:
+                        texto_limpo = limpar_texto(conteudo_seg)
+                        if texto_limpo:
+                            segmentos.append(("texto", texto_limpo))
+
+            elif papel == "cloze_resposta":
+
+                campo_texto = campo["origem"]
+
+                if campo_texto not in note["fields"]:
+                    print(f"Sem campo '{campo_texto}'")
+                    continue
+
+                valor_texto = mathjax_para_fala(note["fields"][campo_texto]["value"])
+
+                # Lê o conteúdo que estava escondido em {{cN::conteudo}},
+                # limpando cada trecho (remove tags HTML etc.) antes de juntar
+                respostas = extrair_respostas_cloze(valor_texto)
+                respostas_limpas = [limpar_texto(r) for r in respostas]
+                texto_respostas = ", ".join([r for r in respostas_limpas if r])
+
+                # E soma o que estiver digitado manualmente no campo extra
+                # (configurável, ex.: "Extra"), se houver um configurado
+                texto_extra = ""
+                campo_extra = campo.get("extra_origem")
+
+                if campo_extra and campo_extra in note["fields"]:
+                    valor_extra = note["fields"][campo_extra]["value"]
+                    texto_extra = limpar_texto(mathjax_para_fala(valor_extra))
+
+                partes = [p for p in [texto_respostas, texto_extra] if p]
+                texto = ". ".join(partes)
+
+                segmentos = [("texto", texto)]
+
+            else:
+                print(f"Papel de campo desconhecido: {papel}")
+                continue
+
+            # Texto "achatado" (só os pedaços falados, sem marcar as pausas),
+            # usado para checagem de vazio/validação e para o preview no console
+            texto = " ".join(
+                conteudo for tipo_seg, conteudo in segmentos if tipo_seg == "texto"
+            ).strip()
+
+            if not texto:
+                print(f"{campo_destino} vazio")
+                continue
+
+            # =========================
+            # VALIDAR TEXTO FALÁVEL
+            # =========================
+
+            texto_validacao = re.sub(
+                r"[^\w\sÀ-ÿ]",
+                "",
+                texto
+            )
+
+            if not texto_validacao.strip():
+                print(f"{campo_destino} contém apenas símbolos inválidos")
+                continue
+
+            # label usado no nome do arquivo (mantém compatibilidade com
+            # arquivos antigos do Basic_audio: 123456_Frente.mp3 etc.)
+            label = campo_destino[5:] if campo_destino.startswith("Audio") else campo_destino
+
+            nome_audio = f"{note_id}_{label.lower()}.mp3"
+
+            caminho_audio = os.path.join(
+                TEMP_DIR,
+                nome_audio
+            )
+
+            audio_tag = f"[sound:{nome_audio}]"
+
+            campo_existente = note["fields"].get(campo_destino, {}).get("value", "")
+
+            if not REFAZER_AUDIOS and "[sound:" in campo_existente:
+                print(f"{campo_destino} já tem áudio, pulando")
+                continue
+
+            # -------------------------
+            # SE JÁ EXISTE
+            # -------------------------
+
+            if (
+                os.path.exists(caminho_audio)
+                and os.path.getsize(caminho_audio) > 0
+            ):
+
+                # -------------------------
+                # IGNORAR ÁUDIO EXISTENTE
+                # -------------------------
+
+                if not REFAZER_AUDIOS:
+
+                    print(f"Áudio já existe -> {nome_audio}")
+
+                    campo_existente = ""
+
+                    if campo_destino in note["fields"]:
+                        campo_existente = note["fields"][campo_destino]["value"]
+
+                    if audio_tag not in campo_existente:
+
+                        invoke(
+                            "updateNoteFields",
+                            note={
+                                "id": note_id,
+                                "fields": {
+                                    campo_destino: audio_tag
+                                }
                             }
-                        }
+                        )
+
+                    continue
+
+                # -------------------------
+                # REFAZER ÁUDIO
+                # -------------------------
+
+                else:
+
+                    print(f"Refazendo áudio -> {nome_audio}")
+
+                    try:
+                        os.remove(caminho_audio)
+                    except Exception:
+                        pass
+
+            print(f"\nGerando '{campo_destino}' (a partir de '{campo.get('origem')}')...")
+            print(f"Texto: {texto[:80]}")
+
+            if papel == "normal":
+
+                # Sem pausas de cloze -> gera direto com o Edge-TTS, sem
+                # passar pelo pydub (evita perda de qualidade por
+                # recompressão do MP3).
+                sucesso, erro = asyncio.run(
+                    gerar_audio_unico(
+                        texto,
+                        caminho_audio
                     )
-
-                continue
-
-            # -------------------------
-            # REFAZER ÁUDIO
-            # -------------------------
+                )
 
             else:
 
-                print(f"Refazendo áudio -> {nome_audio}")
-
-                try:
-                    os.remove(caminho_audio)
-                except Exception:
-                    pass
-
-        print(f"\nGerando '{campo_destino}' (a partir de '{campo.get('origem')}')...")
-        print(f"Texto: {texto[:80]}")
-
-        if papel == "normal":
-
-            # Sem pausas de cloze -> gera direto com o Edge-TTS, sem
-            # passar pelo pydub (evita perda de qualidade por
-            # recompressão do MP3).
-            sucesso, erro = asyncio.run(
-                gerar_audio_unico(
-                    texto,
-                    caminho_audio
+                # cloze_pergunta / cloze_resposta: precisa juntar segmentos
+                # de fala (e, no caso da pergunta, pausas reais de
+                # silêncio) -> só aqui é necessário usar o pydub.
+                sucesso, erro = asyncio.run(
+                    gerar_audio_segmentado(
+                        segmentos,
+                        caminho_audio
+                    )
                 )
-            )
 
-        else:
+            if sucesso:
 
-            # cloze_pergunta / cloze_resposta: precisa juntar segmentos
-            # de fala (e, no caso da pergunta, pausas reais de
-            # silêncio) -> só aqui é necessário usar o pydub.
-            sucesso, erro = asyncio.run(
-                gerar_audio_segmentado(
-                    segmentos,
-                    caminho_audio
-                )
-            )
+                with open(caminho_audio, "rb") as f:
+                    audio_b64 = base64.b64encode(f.read()).decode("utf-8")
 
-        if sucesso:
+                resp = invoke("storeMediaFile", filename=nome_audio, data=audio_b64)
+                if resp.get("error"):
+                    print(f"Falha ao salvar mídia no Anki: {resp['error']}")
+                    continue
 
-            with open(caminho_audio, "rb") as f:
-                audio_b64 = base64.b64encode(f.read()).decode("utf-8")
+            else:
+
+                print("Falha Edge-TTS")
+                print(erro)
+                print("ERRO FINAL")
+                continue
+
+            # -------------------------
+            # UPDATE AUDIO
+            # -------------------------
 
             invoke(
-                "storeMediaFile",
-                filename=nome_audio,
-                data=audio_b64
+                "updateNoteFields",
+                note={
+                    "id": note_id,
+                    "fields": {
+                        campo_destino: audio_tag
+                    }
+                }
             )
 
-        else:
+            print(f"OK -> {nome_audio}")
 
-            print("Falha Edge-TTS")
-            print(erro)
-            print("ERRO FINAL")
-            continue
+    print("\nFINALIZADO")
 
-        # -------------------------
-        # UPDATE AUDIO
-        # -------------------------
 
-        invoke(
-            "updateNoteFields",
-            note={
-                "id": note_id,
-                "fields": {
-                    campo_destino: audio_tag
-                }
-            }
-        )
-
-        print(f"OK -> {nome_audio}")
-
-print("\nFINALIZADO")
+if __name__ == "__main__":
+    main()
