@@ -45,7 +45,7 @@ MAX_RETRIES = 3
 # usuário (origem -> destino). Assim, adicionar um campo novo não exige
 # editar este script: basta usar o menu "Configurar tipos de nota /
 # campos" e a configuração fica salva para as próximas execuções.
-CONFIG_FILE = os.path.join(HOME, "anki_tts_config.json")
+CONFIG_FILE = os.environ.get("CONFIG_FILE", os.path.join(HOME, "anki_tts_config.json"))
 
 # =========================
 # TIPOS DE NOTA SUPORTADOS
@@ -120,10 +120,12 @@ def salvar_config(config):
 # ANKICONNECT
 # =========================
 
+ANKICONNECT_URL = os.environ.get("ANKICONNECT_URL", "http://localhost:8765")
+
 def invoke(action, **params):
 
     resposta = requests.post(
-        "http://localhost:8765",
+        ANKICONNECT_URL,          # <- era "http://localhost:8765"
         json={
             "action": action,
             "version": 6,
@@ -1898,10 +1900,13 @@ for i, note in enumerate(infos_processaveis, start=1):
 
         if sucesso:
 
+            with open(caminho_audio, "rb") as f:
+                audio_b64 = base64.b64encode(f.read()).decode("utf-8")
+
             invoke(
                 "storeMediaFile",
                 filename=nome_audio,
-                path=caminho_audio
+                data=audio_b64
             )
 
         else:
